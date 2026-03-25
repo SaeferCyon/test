@@ -136,18 +136,22 @@ def can_descend(column: ZColumn, z: int) -> bool:
 def get_fall_distance(column: ZColumn, z: int) -> int:
     """Distance (in z-levels) to the next solid tile below *z*.
 
-    Returns 0 if the tile directly below (z-1) is solid or if *z*
-    itself is at the bottom of the map.
+    Returns 0 if the current z-level has a floor (player is standing on
+    solid ground). Only counts fall distance when the player is in air.
     """
+    # If we're on solid ground, no fall.
+    if column.has_floor(z):
+        return 0
+    # We're in air — find the nearest solid tile below.
     distance = 0
     current = z - 1
     while current >= MIN_Z:
         if column.has_floor(current):
-            return distance
+            return distance + 1
         distance += 1
         current -= 1
     # Fell to the bottom of the map without hitting anything.
-    return distance
+    return distance + 1
 
 
 def calc_fall_damage(distance: int) -> int:
