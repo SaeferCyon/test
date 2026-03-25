@@ -1,7 +1,8 @@
-# 縁起 ENGI — A Feudal Japan Roguelike
+# 縁起 ENGI — A Feudal Japan Society Simulation Roguelike
 
-A mechanically dense, geographically accurate open-world roguelike set in
-Sengoku-era (1467–1615) Japan. Inspired by Nethack and Cataclysm: Dark Days Ahead.
+A mechanically dense, geographically accurate open-world society simulation
+roguelike set in Sengoku-era (1467–1615) Japan. Inspired by Nethack, Cataclysm:
+Dark Days Ahead, Morrowind, and Crusader Kings.
 
 ---
 
@@ -82,6 +83,68 @@ Skills improve through use. Use your sword — it improves. Win debates — Rhet
 - **Faction reputation** with Tokugawa, Imperial, Temple, Merchant, Bandits, and more
 - Kill civilians → lose honor. Win debates → gain it. Flee from battle → lose it.
 
+### CONVERSATIONS (Morrowind-style)
+Talk to NPCs by selecting from a growing list of **topics** you've discovered.
+- Start with 5 basic topics (Greetings, Directions, Weather, Local News, Trade)
+- Discover new topics through conversation — asking about trade might reveal Trade Routes
+- Every NPC can be asked any known topic — responses vary by their knowledge, personality, and relationship with you
+- NPC knowledge depends on their profession, location, and faction
+- Some topics are skill-gated — need Medicine 2+ to discuss healing arts
+- Trust matters: hostile NPCs won't share personal topics or rumors
+
+### TRAITS (Crusader Kings-style)
+Every character has personality traits that define how they interact with the world.
+- **55 traits** across 5 categories: Personality, Education, Lifestyle, Congenital, Physical
+- Conflicting traits can't coexist (Brave vs Cowardly, Honest vs Deceitful)
+- Complementary traits synergize (Brave + Loyal, Scholar + Patient)
+- Some traits are hidden until discovered through conversation or observation
+- Congenital traits (Genius, Strong, Beautiful) can be inherited by children
+- Physical traits (Scarred, Maimed, One-Eyed) acquired through combat injuries
+- Traits affect: combat, dialog, relationships, skill learning, social interactions
+
+### RELATIONSHIPS & MEMORIES
+Characters remember how you treat them.
+- Relationship score (-100 to 100): Stranger → Acquaintance → Friend → Close Friend / Rival → Enemy
+- Family ties: parent, child, sibling, spouse
+- **Memories**: NPCs remember if you helped them, stole from them, or insulted their family
+- Memories decay over time but never fully disappear — "forgiven but not forgotten"
+- **Gossip**: NPCs share memories with each other, spreading your reputation
+- **Blood feuds**: harm one family member and the whole family may turn against you
+- NPC-to-NPC relationships form and break autonomously
+
+### SOCIAL HIERARCHY
+Sengoku Japan has a strict class system. Your rank determines what you can do.
+- **Ranks**: Emperor > Shogun > Daimyo > Samurai > Ashigaru > Merchant > Artisan > Farmer > Eta
+- Higher ranks can coerce lower ranks in conversation
+- Rank affects: where you can go, who talks to you, prices, available actions
+- **Social mobility**: a farmer can become an ashigaru, a merchant can buy samurai status
+- **Disguises**: fake your rank with the right equipment — but checkpoints may catch you
+
+### BODY & INJURIES
+Combat wounds target specific body parts with lasting consequences.
+- **27 body zones**: head, face, eyes, ears, neck, chest, abdomen, arms, hands, legs, feet, internal organs
+- **Injury types**: bruises, cuts, deep wounds, fractures, severed limbs, burns
+- **Permanent effects**: lose an eye (halved ranged accuracy), lose a hand (can't dual wield), lose a leg (movement penalty)
+- Wound infection model — untreated wounds can become infected and kill
+- Medical treatment: bandaging, herbal medicine, surgery, amputation
+- **6 diseases**: plague, dysentery, fever, smallpox, malaria, tetanus
+
+### LIFE & DYNASTY
+Live a full life in Sengoku Japan. Grow old. Start a family. Die. Continue as your heir.
+- **Aging**: stats change across 6 life stages (child → young adult → prime → middle age → old → elderly)
+- **Courtship & Marriage**: requires relationship threshold + compatible traits
+- **Children**: inherit traits from parents (congenital by genetics, personality by upbringing)
+- **Death**: old age, combat, illness, execution
+- **Play as your heir**: when you die, continue as your oldest living child
+- **Family tree**: track your lineage across generations
+
+### RANDOM ENCOUNTERS
+The travel map is alive with people going about their business.
+- Merchants follow trade routes, pilgrims walk temple circuits, armies march to war
+- Encounter type varies by terrain, season, time of day, and active wars
+- Night travel is more dangerous — higher chance of hostile encounters
+- Some encounters become recurring characters you meet again later
+
 ---
 
 ## CLASSES
@@ -111,9 +174,11 @@ ACTIONS
   f   Fish            t   Set trap            x   Examine location
 
 SOCIAL
-  T / Enter   Talk to adjacent NPC
+  T / Enter   Talk to adjacent NPC (topic-based conversation)
   D           Challenge to debate
   B           Trade/Bribe
+  G           Gift item to NPC
+  P           View relationship with adjacent NPC
 
 COMBAT (when in combat overlay)
   1   Strike            2   Feint & Strike
@@ -129,10 +194,17 @@ DEBATE (when in debate overlay)
   7   Bribery           8   Concede
   Esc Withdraw
 
+CONVERSATION (when talking to NPC)
+  j/k         Scroll topic list
+  Enter       Ask about selected topic
+  Esc         End conversation
+
 INTERFACE
   M   World map         @   Character sheet
   ?   Help              Q   Quit
   Tab Cycle stance (outside combat)
+  V   View family tree
+  R   Relationship list (known NPCs)
 ```
 
 ---
@@ -172,10 +244,23 @@ engi/
 ├── game.py       — Main game loop & input handling
 ├── renderer.py   — Curses terminal renderer
 ├── world.py      — World generation & geography
-├── entities.py   — Player, NPC, item entities
-├── mechanics.py  — Combat, debate, survival systems
-├── data.py       — All static game data
-└── README.md     — This file
+├── entities.py      — Player, NPC, item entities (with traits, body, family)
+├── mechanics.py     — Combat, debate, survival systems
+├── data.py          — All static game data
+├── trait_data.py    — 55 CK-style traits with conflict/complement matrices
+├── body_data.py     — 27 body zones, injury types, diseases, treatments
+├── social_data.py   — Social hierarchy ranks, privileges, mobility paths
+├── topic_data.py    — 24 Morrowind-style conversation topics
+├── traits.py        — Trait engine (assignment, inheritance, compatibility)
+├── body.py          — Body/injury system (hit locations, dismemberment)
+├── memories.py      — Memory system (recall, gossip, decay)
+├── relationships.py — Relationship graph (NPC-NPC, feuds, family ties)
+├── conversations.py — Topic-based conversation system
+├── life_sim.py      — Dynasty simulation (aging, marriage, children, heir)
+├── encounters.py    — Dynamic random encounters on travel map
+├── event_bus.py     — Observer pattern event coordination
+├── design_doc.md    — Game design document
+└── README.md        — This file
 ```
 
 ---
