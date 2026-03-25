@@ -280,6 +280,151 @@ class Game:
         self.game_world = GameWorld(seed=42)
         self.game_world.region_map.world = self.world
 
+        # Initialize clan simulation
+        from clan_sim import ClanSimulation
+
+        self._clan_sim = ClanSimulation()
+
+    def _draw_local_mode(self):
+        """Draw the local map view."""
+        gw = self.game_world
+        self.renderer.draw_local(
+            gw.current_local,
+            gw.local_player_x,
+            gw.local_player_y,
+            gw.local_player_z,
+            self.state,
+        )
+
+    def _handle_local_input(self, k):
+        """Handle input when on the local map."""
+        from mechanics import check_fall, attempt_vertical_move
+
+        # Movement (same keys as travel)
+        if k in MOVE_KEYS:
+            dc, dr = MOVE_KEYS[k]
+            self._try_local_move(dc, dr)
+        # Go up (<)
+        elif k == ord("<"):
+            ok, msgs = attempt_vertical_move(
+                self.player,
+                "up",
+                self.game_world.current_local,
+                self.game_world.local_player_x,
+                self.game_world.local_player_y,
+            )
+            for m in msgs:
+                self._msg(m, 3 if ok else 8)
+            if ok:
+                self.game_world.local_player_z = self.player.z
+                self._process_turn(2)
+        # Go down (>)
+        elif k == ord(">"):
+            ok, msgs = attempt_vertical_move(
+                self.player,
+                "down",
+                self.game_world.current_local,
+                self.game_world.local_player_x,
+                self.game_world.local_player_y,
+            )
+            for m in msgs:
+                self._msg(m, 3 if ok else 8)
+            if ok:
+                self.game_world.local_player_z = self.player.z
+                self._process_turn(2)
+        # Exit local map (Escape)
+        elif k == 27:
+            self._exit_local_map()
+        # Wait
+        elif k == ord("."):
+            self._process_turn(1)
+        # Examine
+        elif k == ord("x"):
+            lm = self.game_world.current_local
+            gw = self.game_world
+            t = lm.get_tile(gw.local_player_x, gw.local_player_y, gw.local_player_z)
+            if t and t.terrain in LOCAL_TERRAIN:
+                td = LOCAL_TERRAIN[t.terrain]
+                self._msg(f"{td['name']}: {td['desc']}", 7)
+        # Inventory, character sheet, help, map, stance — same as travel
+        elif k in (ord("i"),):
+            self.mode = "inventory"
+        elif k == ord("@"):
+            self.mode = "char"
+        elif k == ord("?"):
+            self.mode = "help"
+        elif k in (ord("M"), ord("m")):
+            self._exit_local_map()
+            self.mode = "map"
+        elif k in (ord("Q"),):
+            self._confirm_quit()
+        elif k == ord("\t"):
+            stances = list(STANCES.keys())
+            idx = stances.index(self.player.stance)
+            self.player.stance = stances[(idx + 1) % len(stances)]
+            self._msg(f"Combat stance: {self.player.stance.title()}", 7)
+        # Eat, forage, rest — same as travel
+        elif k == ord("e"):
+            self._eat_menu()
+        elif k == ord("r"):
+            self._rest_short()
+        elif k == ord("F"):
+            self._forage()
+
+    def _try_local_move(self, dc, dr):
+        """Try to move on the local map."""
+        from mechanics import check_fall
+
+        gw = self.game_world
+        lm = gw.current_local
+        nx = gw.local_player_x + dc
+        ny = gw.local_player_y + dr
+        nz = gw.local_player_z
+
+        # Edge detection — move to adjacent area tile
+        if nx < 0:
+            if gw.move_to_adjacent_area("west"):
+                self._msg("You move to a new area.", 7)
+            return
+        elif nx >= LOCAL_W:
+            if gw.move_to_adjacent_area("east"):
+                self._msg("You move to a new area.", 7)
+            return
+        if ny < 0:
+            if gw.move_to_adjacent_area("north"):
+                self._msg("You move to a new area.", 7)
+            return
+        elif ny >= LOCAL_H:
+            if gw.move_to_adjacent_area("south"):
+                self._msg("You move to a new area.", 7)
+            return
+
+        # Walkability check
+        if not lm.is_walkable(nx, ny, nz):
+            t = lm.get_tile(nx, ny, nz)
+            if t and t.terrain in LOCAL_TERRAIN:
+                td = LOCAL_TERRAIN[t.terrain]
+                self._msg(f"Blocked by {td['name'].lower()}.", 8)
+            else:
+                self._msg("You can't go there.", 8)
+            return
+
+        # Move
+        gw.local_player_x = nx
+        gw.local_player_y = ny
+        self.player.distance_moved += 1
+
+        # Check for falling
+        fall_msgs = check_fall(self.player, lm, nx, ny)
+        for m in fall_msgs:
+            self._msg(m, 5)
+        if fall_msgs:
+            gw.local_player_z = self.player.z
+
+        # Move cost
+        cost = lm.get_move_cost(nx, ny, nz)
+        self._process_turn(cost)
+
     def _enter_local_map(self):
         """Transition from travel map to local map at player's position."""
         if self.map_mode == "local":
@@ -318,13 +463,23 @@ class Game:
     def _game_loop(self):
         """Main loop."""
         while not self.state.game_over:
-            # Recompute FOV
-            self.world.compute_fov(
-                self.player.col, self.player.row, self.player.fov_radius
-            )
+            # Recompute FOV (travel or local)
+            if self.map_mode == "local" and self.game_world.current_local:
+                self.game_world.current_local.compute_fov(
+                    self.game_world.local_player_x,
+                    self.game_world.local_player_y,
+                    self.game_world.local_player_z,
+                    self.player.fov_radius,
+                )
+            else:
+                self.world.compute_fov(
+                    self.player.col, self.player.row, self.player.fov_radius
+                )
 
             # Draw
-            if self.mode == "combat" and self.combat.active and self.combat.enemy:
+            if self.map_mode == "local" and self.game_world.current_local:
+                self._draw_local_mode()
+            elif self.mode == "combat" and self.combat.active and self.combat.enemy:
                 self.renderer.draw(self.world, self.player, self.state)
                 self.renderer.draw_combat_overlay(
                     self.player, self.combat.enemy, self.combat
@@ -374,8 +529,20 @@ class Game:
             elif self.mode == "char":
                 if k in (ord("@"), 27, ord("q")):
                     self.mode = "normal"
+            elif self.map_mode == "local":
+                self._handle_local_input(k)
             else:
                 self._handle_normal_input(k)
+
+            # Clan simulation tick (once per game day)
+            if (
+                self.game_world
+                and hasattr(self, "_clan_sim")
+                and self._clan_sim
+                and self.state.hour == 0
+                and self.state.minute < 6
+            ):
+                self._clan_sim.tick(self.state.rng)
 
             # Death check
             if self.player.hp <= 0:

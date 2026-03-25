@@ -876,13 +876,17 @@ def attempt_sleep(player, terrain_type, weather, hours, rng=None):
 # ─────────────────────────────────────────────────────────────
 
 
-def check_fall(player, local_map):
-    """Check if player should fall. Returns list of messages."""
+def check_fall(player, local_map, local_x=None, local_y=None):
+    """Check if player should fall. Returns list of messages.
+    Use local_x/local_y for position on the local map (not player.col/row
+    which are region coords)."""
     if local_map is None:
         return []
     from z_level import get_fall_distance, calc_fall_damage
 
-    col = local_map.get_column(player.col, player.row)
+    x = local_x if local_x is not None else player.col
+    y = local_y if local_y is not None else player.row
+    col = local_map.get_column(x, y)
     if col is None:
         return []
     dist = get_fall_distance(col, player.z)
@@ -899,14 +903,17 @@ def check_fall(player, local_map):
     return msgs
 
 
-def attempt_vertical_move(player, direction, local_map):
+def attempt_vertical_move(player, direction, local_map, local_x=None, local_y=None):
     """Attempt to move up or down a Z-level. direction: 'up' or 'down'.
+    Use local_x/local_y for position on the local map.
     Returns (success, messages)."""
     if local_map is None:
         return False, ["You can't go that way."]
     from z_level import can_ascend, can_descend, can_climb
 
-    col = local_map.get_column(player.col, player.row)
+    x = local_x if local_x is not None else player.col
+    y = local_y if local_y is not None else player.row
+    col = local_map.get_column(x, y)
     if col is None:
         return False, ["Nothing there."]
     msgs = []
