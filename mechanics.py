@@ -10,26 +10,29 @@ from data import *
 # COMBAT SYSTEM
 # ─────────────────────────────────────────────────────────────
 
+
 class CombatManager:
     """Handles all combat resolution."""
 
     def __init__(self):
-        self.log = []       # recent combat messages
+        self.log = []  # recent combat messages
         self.active = False
-        self.enemy  = None
-        self.round  = 0
+        self.enemy = None
+        self.round = 0
 
     # ── Entry/Exit ─────────────────────────────────────────
     def start_combat(self, player, enemy):
         self.active = True
-        self.enemy  = enemy
-        self.round  = 0
-        self.log    = []
+        self.enemy = enemy
+        self.round = 0
+        self.log = []
         enemy.ai_state = "chase"
 
         msgs = []
         msgs.append(f"⚔  COMBAT — {enemy.name}")
-        msgs.append(f"HP: {enemy.hp}/{enemy.max_hp} | Your HP: {player.hp}/{player.max_hp}")
+        msgs.append(
+            f"HP: {enemy.hp}/{enemy.max_hp} | Your HP: {player.hp}/{player.max_hp}"
+        )
         if enemy.is_animal:
             msgs.append("It lunges at you!")
         elif enemy.is_undead:
@@ -42,7 +45,7 @@ class CombatManager:
 
     def end_combat(self, reason=""):
         self.active = False
-        self.enemy  = None
+        self.enemy = None
         return reason
 
     # ── Resolution ─────────────────────────────────────────
@@ -106,7 +109,9 @@ class CombatManager:
         else:
             msgs.append(f"Your {tech['name']} hits {self.enemy.name}!")
 
-        msgs.append(f"  → {damage} damage. ({self.enemy.hp}-{damage}/{self.enemy.max_hp} HP)")
+        msgs.append(
+            f"  → {damage} damage. ({self.enemy.hp}-{damage}/{self.enemy.max_hp} HP)"
+        )
 
         # Apply special effects
         effect = tech.get("effect")
@@ -144,7 +149,9 @@ class CombatManager:
             msgs.extend(self._enemy_attack(player))
         else:
             msgs.append(f"{self.enemy.name} struggles to recover.")
-            self.enemy.conditions["immobilized"] = max(0, self.enemy.conditions.get("immobilized",0) - 1)
+            self.enemy.conditions["immobilized"] = max(
+                0, self.enemy.conditions.get("immobilized", 0) - 1
+            )
             if self.enemy.conditions["immobilized"] <= 0:
                 del self.enemy.conditions["immobilized"]
 
@@ -181,7 +188,9 @@ class CombatManager:
         # Parry absorption
         if "defended" in player.conditions:
             damage = int(damage * 0.3)
-            msgs.append(f"  You parry {enemy.name}'s blow! ({damage} damage through guard.)")
+            msgs.append(
+                f"  You parry {enemy.name}'s blow! ({damage} damage through guard.)"
+            )
             del player.conditions["defended"]
         else:
             msgs.append(f"  {enemy.name} hits you for {damage} damage!")
@@ -229,13 +238,15 @@ class CombatManager:
             player.conditions["defended"] = 1
             msgs.append("You take a defensive stance, ready to parry.")
             skill_xp = player.gain_skill_xp("kenjutsu", 5)
-            if skill_xp: msgs.append(skill_xp)
+            if skill_xp:
+                msgs.append(skill_xp)
         elif tech_name == "dodge":
             player.conditions["dodged"] = 1
             player.stamina = max(0, player.stamina - 5)
             msgs.append("You step aside, ready to evade.")
             skill_xp = player.gain_skill_xp("stealth", 5)
-            if skill_xp: msgs.append(skill_xp)
+            if skill_xp:
+                msgs.append(skill_xp)
         # Enemy still attacks
         msgs.extend(self._enemy_attack(player))
         return msgs
@@ -273,6 +284,7 @@ class CombatManager:
         if tile:
             for item_name in drops:
                 from entities import create_item
+
                 item = create_item(item_name)
                 if item:
                     iid = f"drop_{id(item)}"
@@ -314,27 +326,28 @@ class CombatManager:
 # DEBATE SYSTEM
 # ─────────────────────────────────────────────────────────────
 
+
 class DebateManager:
     """Manages the debate/persuasion system."""
 
     def __init__(self):
-        self.active    = False
-        self.target    = None
-        self.topic     = ""
-        self.momentum  = 50   # 0=opponent winning, 100=player winning
-        self.ap        = 3    # argument points available per round
-        self.round     = 0
+        self.active = False
+        self.target = None
+        self.topic = ""
+        self.momentum = 50  # 0=opponent winning, 100=player winning
+        self.ap = 3  # argument points available per round
+        self.round = 0
         self.topic_def = None
-        self.result    = None  # "won","lost","draw","fled"
+        self.result = None  # "won","lost","draw","fled"
 
     def start_debate(self, player, npc, topic=None):
         """Begin a debate with an NPC."""
-        self.active   = True
-        self.target   = npc
+        self.active = True
+        self.target = npc
         self.momentum = 50
-        self.ap       = 3 + player.skills.get("rhetoric", 1) // 3
-        self.round    = 0
-        self.result   = None
+        self.ap = 3 + player.skills.get("rhetoric", 1) // 3
+        self.round = 0
+        self.result = None
 
         if topic:
             self.topic = topic
@@ -348,7 +361,9 @@ class DebateManager:
         t_name = self.topic_def["name"] if self.topic_def else self.topic
         msgs.append(f"辯  DEBATE — {npc.name}")
         msgs.append(f"Topic: {t_name}")
-        msgs.append(f"Your rhetoric: {player.skills['rhetoric']} | Argument points: {self.ap}")
+        msgs.append(
+            f"Your rhetoric: {player.skills['rhetoric']} | Argument points: {self.ap}"
+        )
         greeting_lines = npc.get_dialog()
         msgs.append(f"{npc.name}: '{random.choice(greeting_lines)}'")
         return msgs
@@ -387,8 +402,9 @@ class DebateManager:
         if arg_type_name == "authority":
             base_power += player.honor // 10
         if arg_type_name == "intimidate":
-            combat_skill = max(player.skills.get("kenjutsu", 1),
-                               player.skills.get("jujutsu", 1))
+            combat_skill = max(
+                player.skills.get("kenjutsu", 1), player.skills.get("jujutsu", 1)
+            )
             base_power += combat_skill * 2
             if player.honor < 30:
                 base_power = int(base_power * 0.6)
@@ -437,19 +453,19 @@ class DebateManager:
     def _get_npc_argument(self, stance):
         """Get the argument type this stance uses."""
         stance_args = {
-            "honor_above_all":  "authority",
-            "free_trade":       "logical",
-            "buddhism":         "emotional",
-            "rebel":            "emotional",
-            "freedom":          "logical",
-            "tradition":        "authority",
-            "pragmatism":       "logical",
-            "law_and_order":    "authority",
-            "might_makes_right":"intimidate",
-            "neutral":          "logical",
-            "peasant":          "emotional",
-            "survival":         "emotional",
-            "shinto":           "authority",
+            "honor_above_all": "authority",
+            "free_trade": "logical",
+            "buddhism": "emotional",
+            "rebel": "emotional",
+            "freedom": "logical",
+            "tradition": "authority",
+            "pragmatism": "logical",
+            "law_and_order": "authority",
+            "might_makes_right": "intimidate",
+            "neutral": "logical",
+            "peasant": "emotional",
+            "survival": "emotional",
+            "shinto": "authority",
         }
         return stance_args.get(stance, "logical")
 
@@ -470,22 +486,22 @@ class DebateManager:
 
         # NPC dialog response (generic based on argument type)
         responses = {
-            "logical":    [
+            "logical": [
                 f"{npc.name}: 'The logic of it is straightforward — you cannot deny the facts.'",
                 f"{npc.name}: 'Consider the consequences carefully before you commit to that position.'",
                 f"{npc.name}: 'That argument collapses under scrutiny. Let me show you why.'",
             ],
-            "emotional":  [
+            "emotional": [
                 f"{npc.name}: 'Think of those who suffer under this! Have you no heart?'",
                 f"{npc.name}: 'My ancestors did not sacrifice themselves for such cowardice!'",
                 f"{npc.name}: 'Does duty mean nothing to you?'",
             ],
-            "authority":  [
+            "authority": [
                 f"{npc.name}: 'The Emperor's decree stands above all personal opinions.'",
                 f"{npc.name}: 'Tradition is not a cage — it is the spine of civilization.'",
                 f"{npc.name}: 'These have been the laws since before your grandfather was born.'",
             ],
-            "evidence":   [
+            "evidence": [
                 f"{npc.name}: 'I have seen this myself. The facts do not lie as men do.'",
                 f"{npc.name}: 'Three harvests. I have counted them. The numbers are clear.'",
             ],
@@ -533,7 +549,7 @@ class DebateManager:
 
         # NPC attitude change
         npc.attitude = max(npc.attitude, 1)
-        npc.hostile  = False
+        npc.hostile = False
         npc.ai_state = "idle"
 
         # Skill XP
@@ -562,7 +578,9 @@ class DebateManager:
         msgs = []
         self.result = "draw"
         self.active = False
-        msgs.append("The debate reaches an impasse. Neither side fully convinces the other.")
+        msgs.append(
+            "The debate reaches an impasse. Neither side fully convinces the other."
+        )
         player.gain_skill_xp("rhetoric", 15)
         return msgs
 
@@ -582,7 +600,10 @@ class DebateManager:
 CRAFT_RECIPES = {
     "crude_bandage": {
         "name": "Crude Bandage",
-        "ingredients": [("wood", 0), ("mushroom", 0)],  # no quantity system, just check for item
+        "ingredients": [
+            ("wood", 0),
+            ("mushroom", 0),
+        ],  # no quantity system, just check for item
         "result": "bandage",
         "skill": "medicine",
         "min_skill": 2,
@@ -615,23 +636,50 @@ CRAFT_RECIPES = {
     },
 }
 
+
 def forage(player, terrain_type, season, rng=None):
     """Attempt to forage for food. Returns (success, item_name, message)."""
     rng = rng or random
     survival = player.skills.get("survival", 1)
 
     forage_tables = {
-        T_FOREST:      [("mushroom",40),("herb_poultice",20),("wood",25),("bamboo",15)],
-        T_DENSE_FOREST:[("mushroom",35),("herb_poultice",25),("wood",30),("bamboo",10)],
-        T_BAMBOO:      [("bamboo",50),("mushroom",25),("herb_poultice",25)],
-        T_MOUNTAIN:    [("mushroom",25),("herb_poultice",20),("wood",30),("iron_ore",10),("spring_water",15)],
-        T_PLAINS:      [("mushroom",30),("vegetable",35),("wood",20),("herb_poultice",15)],
-        T_FARMLAND:    [("vegetable",50),("rice",35),("wood",15)],
-        T_RICE_PADDY:  [("rice",70),("vegetable",20),("water",10)],
-        T_BEACH:       [("dried_fish",40),("water",30),("bamboo",20),("rope",10)],
-        T_SWAMP:       [("herb_poultice",40),("bamboo",30),("mushroom",20),("wood",10)],
-        T_ONSEN:       [("spring_water",60),("herb_poultice",40)],
-        T_RIVER:       [("dried_fish",50),("water",50)],
+        T_FOREST: [
+            ("mushroom", 40),
+            ("herb_poultice", 20),
+            ("wood", 25),
+            ("bamboo", 15),
+        ],
+        T_DENSE_FOREST: [
+            ("mushroom", 35),
+            ("herb_poultice", 25),
+            ("wood", 30),
+            ("bamboo", 10),
+        ],
+        T_BAMBOO: [("bamboo", 50), ("mushroom", 25), ("herb_poultice", 25)],
+        T_MOUNTAIN: [
+            ("mushroom", 25),
+            ("herb_poultice", 20),
+            ("wood", 30),
+            ("iron_ore", 10),
+            ("spring_water", 15),
+        ],
+        T_PLAINS: [
+            ("mushroom", 30),
+            ("vegetable", 35),
+            ("wood", 20),
+            ("herb_poultice", 15),
+        ],
+        T_FARMLAND: [("vegetable", 50), ("rice", 35), ("wood", 15)],
+        T_RICE_PADDY: [("rice", 70), ("vegetable", 20), ("water", 10)],
+        T_BEACH: [("dried_fish", 40), ("water", 30), ("bamboo", 20), ("rope", 10)],
+        T_SWAMP: [
+            ("herb_poultice", 40),
+            ("bamboo", 30),
+            ("mushroom", 20),
+            ("wood", 10),
+        ],
+        T_ONSEN: [("spring_water", 60), ("herb_poultice", 40)],
+        T_RIVER: [("dried_fish", 50), ("water", 50)],
     }
 
     table = forage_tables.get(terrain_type)
@@ -648,7 +696,8 @@ def forage(player, terrain_type, season, rng=None):
     if rng.random() > success_chance:
         skill_msg = player.gain_skill_xp("survival", 3)
         msgs = ["You search but find nothing useful."]
-        if skill_msg: msgs.append(skill_msg)
+        if skill_msg:
+            msgs.append(skill_msg)
         return False, None, "\n".join(msgs)
 
     # Pick item from table
@@ -688,15 +737,20 @@ def attempt_hunt(player, terrain_type, rng=None):
     """Try to hunt game. Requires bow or trap. Returns (success, item, msg)."""
     rng = rng or random
     skill = player.skills.get("kyujutsu", 1) + player.skills.get("survival", 1) // 2
-    has_bow = player.equipment.get("weapon", {}) and \
-              player.equipment["weapon"].get("skill") == "kyujutsu"
+    has_bow = (
+        player.equipment.get("weapon", {})
+        and player.equipment["weapon"].get("skill") == "kyujutsu"
+    )
 
     if not has_bow and not any(i.get("name_key") == "trap" for i in player.inventory):
         return False, None, "You need a bow or trap to hunt."
 
     game_chance = {
-        T_FOREST: 0.4, T_DENSE_FOREST: 0.5, T_MOUNTAIN: 0.3,
-        T_PLAINS: 0.2, T_BAMBOO: 0.35,
+        T_FOREST: 0.4,
+        T_DENSE_FOREST: 0.5,
+        T_MOUNTAIN: 0.3,
+        T_PLAINS: 0.2,
+        T_BAMBOO: 0.35,
     }.get(terrain_type, 0.1)
 
     chance = game_chance * (0.5 + skill * 0.05)
@@ -711,6 +765,7 @@ def attempt_hunt(player, terrain_type, rng=None):
 # ─────────────────────────────────────────────────────────────
 # WORLD TEMPERATURE MODEL
 # ─────────────────────────────────────────────────────────────
+
 
 def get_world_temperature(season, lat):
     """Return base temperature modifier for a location and season."""
@@ -730,8 +785,10 @@ def get_world_temperature(season, lat):
 # TRAP MECHANICS
 # ─────────────────────────────────────────────────────────────
 
+
 class TrapManager:
     """Manage placed traps."""
+
     def __init__(self):
         self.traps = {}  # (col,row) -> turns_remaining
 
@@ -771,6 +828,7 @@ class TrapManager:
 # SLEEP SYSTEM
 # ─────────────────────────────────────────────────────────────
 
+
 def attempt_sleep(player, terrain_type, weather, hours, rng=None):
     """Attempt to sleep. Quality depends on terrain and conditions."""
     rng = rng or random
@@ -778,7 +836,11 @@ def attempt_sleep(player, terrain_type, weather, hours, rng=None):
 
     # Sleep quality
     quality = "good"
-    if terrain_type in (T_HIGH_PEAK, T_MOUNTAIN) and weather in ("snow","blizzard","frost"):
+    if terrain_type in (T_HIGH_PEAK, T_MOUNTAIN) and weather in (
+        "snow",
+        "blizzard",
+        "frost",
+    ):
         quality = "poor"
         msgs.append("You sleep fitfully in the cold. Rest is incomplete.")
     elif terrain_type == T_SWAMP:
@@ -796,9 +858,9 @@ def attempt_sleep(player, terrain_type, weather, hours, rng=None):
     restore_fat = {"poor": 8, "fair": 12, "good": 15, "excellent": 20}[quality] * hours
     restore_morale = {"poor": 2, "fair": 5, "good": 8, "excellent": 12}[quality]
 
-    player.hp      = min(player.max_hp,  player.hp + restore_hp)
+    player.hp = min(player.max_hp, player.hp + restore_hp)
     player.fatigue = max(0, player.fatigue - restore_fat)
-    player.morale  = min(100, player.morale + restore_morale)
+    player.morale = min(100, player.morale + restore_morale)
 
     # Chance of bad event while sleeping
     if quality != "excellent" and rng.random() < 0.05:
@@ -807,3 +869,62 @@ def attempt_sleep(player, terrain_type, weather, hours, rng=None):
 
     msgs.append(f"You sleep {hours} hours. HP restored: +{restore_hp}")
     return msgs, False
+
+
+# ─────────────────────────────────────────────────────────────
+# Z-LEVEL MOVEMENT
+# ─────────────────────────────────────────────────────────────
+
+
+def check_fall(player, local_map):
+    """Check if player should fall. Returns list of messages."""
+    if local_map is None:
+        return []
+    from z_level import get_fall_distance, calc_fall_damage
+
+    col = local_map.get_column(player.col, player.row)
+    if col is None:
+        return []
+    dist = get_fall_distance(col, player.z)
+    if dist <= 0:
+        return []
+    player.z -= dist
+    damage = calc_fall_damage(dist)
+    msgs = []
+    if damage > 0:
+        player.hp = max(0, player.hp - damage)
+        msgs.append(f"You fall {dist} meters! ({damage} damage)")
+    else:
+        msgs.append(f"You drop down {dist} meter{'s' if dist > 1 else ''}.")
+    return msgs
+
+
+def attempt_vertical_move(player, direction, local_map):
+    """Attempt to move up or down a Z-level. direction: 'up' or 'down'.
+    Returns (success, messages)."""
+    if local_map is None:
+        return False, ["You can't go that way."]
+    from z_level import can_ascend, can_descend, can_climb
+
+    col = local_map.get_column(player.col, player.row)
+    if col is None:
+        return False, ["Nothing there."]
+    msgs = []
+    if direction == "up":
+        if can_ascend(col, player.z):
+            player.z += 1
+            msgs.append("You go up.")
+            return True, msgs
+        elif can_climb(col, player.z):
+            player.z += 1
+            player.stamina = max(0, player.stamina - 3)
+            msgs.append("You climb up. (-3 Ki)")
+            return True, msgs
+        return False, ["No way up from here."]
+    elif direction == "down":
+        if can_descend(col, player.z):
+            player.z -= 1
+            msgs.append("You go down.")
+            return True, msgs
+        return False, ["No way down from here."]
+    return False, ["Invalid direction."]

@@ -6,6 +6,7 @@ import random
 import math
 from data import *
 
+
 # ─────────────────────────────────────────────────────────────
 # ITEM INSTANCE
 # ─────────────────────────────────────────────────────────────
@@ -17,11 +18,12 @@ def create_item(name, rng=None):
     defn = ITEMS[name]
     item = dict(defn)
     item["name_key"] = name
-    item["stack"]    = defn.get("count", 1)
-    item["durability"]= defn.get("durability", 100)
+    item["stack"] = defn.get("count", 1)
+    item["durability"] = defn.get("durability", 100)
     if name == "coin_pouch":
         item["money"] = rng.randint(5, 50)
     return item
+
 
 # ─────────────────────────────────────────────────────────────
 # PLAYER
@@ -30,25 +32,26 @@ class Player:
     def __init__(self):
         self.col = 0
         self.row = 0
+        self.z = 0
         self.name = "Nameless"
-        self.cls  = "ronin"
+        self.cls = "ronin"
 
         # Core stats
-        self.hp      = 65
-        self.max_hp  = 65
-        self.stamina = 55    # Ki / stamina for techniques
+        self.hp = 65
+        self.max_hp = 65
+        self.stamina = 55  # Ki / stamina for techniques
         self.max_stamina = 55
 
         # Survival stats (0=fine, 100=crisis)
-        self.hunger  = 0    # 0=full, 100=starving
-        self.thirst  = 0    # 0=hydrated, 100=dying
-        self.fatigue = 0    # 0=rested, 100=collapse
-        self.warmth  = 50   # 0=freezing, 100=burning
+        self.hunger = 0  # 0=full, 100=starving
+        self.thirst = 0  # 0=hydrated, 100=dying
+        self.fatigue = 0  # 0=rested, 100=collapse
+        self.warmth = 50  # 0=freezing, 100=burning
 
         # Social stats
-        self.morale  = 80   # 0=broken, 100=inspired
-        self.honor   = 30   # affects some dialog options
-        self.money   = 10   # mon coins
+        self.morale = 80  # 0=broken, 100=inspired
+        self.honor = 30  # affects some dialog options
+        self.money = 10  # mon coins
 
         # Skills (1-10)
         self.skills = {k: 1 for k in SKILLS}
@@ -61,12 +64,12 @@ class Player:
 
         # Equipment slots
         self.equipment = {
-            "weapon":  None,
+            "weapon": None,
             "offhand": None,
-            "body":    None,
-            "head":    None,
-            "hands":   None,
-            "legs":    None,
+            "body": None,
+            "head": None,
+            "hands": None,
+            "legs": None,
         }
 
         # Inventory (list of item dicts)
@@ -85,11 +88,11 @@ class Player:
         self.known_locations = {}
 
         # Stats tracking
-        self.turns_played   = 0
-        self.kills          = 0
-        self.debates_won    = 0
+        self.turns_played = 0
+        self.kills = 0
+        self.debates_won = 0
         self.distance_moved = 0
-        self.days_survived  = 1
+        self.days_survived = 1
 
         # Ammo tracking
         self.ammo = {"arrow": 0, "ball": 0}
@@ -105,8 +108,8 @@ class Player:
 
         self.hp = self.max_hp = cdef["hp"]
         self.stamina = self.max_stamina = cdef["stamina"]
-        self.honor  = cdef["start_honor"]
-        self.money  = cdef["start_money"]
+        self.honor = cdef["start_honor"]
+        self.money = cdef["start_money"]
         self.skills = dict(cdef["skills"])
         self.skill_xp = {k: 0 for k in SKILLS}
 
@@ -200,7 +203,9 @@ class Player:
             if "per_turn_hp" in cdef:
                 self.hp = max(0, self.hp + cdef["per_turn_hp"])
                 if cdef["per_turn_hp"] < 0:
-                    msgs.append((f"[{cond_name}] {abs(cdef['per_turn_hp'])} damage.", 5))
+                    msgs.append(
+                        (f"[{cond_name}] {abs(cdef['per_turn_hp'])} damage.", 5)
+                    )
             # Count down
             if turns > 0:
                 self.conditions[cond_name] = turns - 1
@@ -308,9 +313,9 @@ class Player:
         if self.hunger <= 0 and item.get("type") == "food":
             return "You're not hungry.", False
 
-        self.hunger  = max(0, self.hunger  + item.get("hunger", 0))
-        self.thirst  = max(0, self.thirst  + item.get("thirst", 0))
-        self.morale  = min(100, self.morale + item.get("morale", 0))
+        self.hunger = max(0, self.hunger + item.get("hunger", 0))
+        self.thirst = max(0, self.thirst + item.get("thirst", 0))
+        self.morale = min(100, self.morale + item.get("morale", 0))
         if "hp" in item:
             self.hp = min(self.max_hp, self.hp + item["hp"])
 
@@ -321,7 +326,10 @@ class Player:
         if item.get("poison_chance", 0) > 0:
             if random.random() < item["poison_chance"]:
                 self.add_condition("poisoned", -1)
-                return f"You eat the {item['name']}... it tastes wrong. You feel sick!", True
+                return (
+                    f"You eat the {item['name']}... it tastes wrong. You feel sick!",
+                    True,
+                )
 
         return f"You eat the {item['name']}.", True
 
@@ -341,7 +349,7 @@ class Player:
             self.stamina = min(self.max_stamina, self.stamina + item["stamina"])
         if item.get("pain_reduce"):
             self.remove_condition("dizzy")
-        return f"You apply the {item['name']}. ({item.get('hp',0):+} HP)", True
+        return f"You apply the {item['name']}. ({item.get('hp', 0):+} HP)", True
 
     def gain_skill_xp(self, skill_name, amount):
         """Gain XP in a skill, potentially leveling it up. Returns message or None."""
@@ -395,8 +403,8 @@ class Player:
             base = random.randint(1, 4)  # unarmed
 
         skill_bonus = self.attack_bonus
-        stance_mod  = STANCES[self.stance]["atk_mod"]
-        stat_mod    = self.stat_multiplier()
+        stance_mod = STANCES[self.stance]["atk_mod"]
+        stat_mod = self.stat_multiplier()
 
         acc_mod = 1.0
         for cond in self.conditions:
@@ -411,7 +419,7 @@ class Player:
     def get_effective_defense(self):
         d = self.defense_total
         skill_bonus = self.skills.get("kenjutsu", 1)
-        stance_mod  = STANCES[self.stance]["def_mod"]
+        stance_mod = STANCES[self.stance]["def_mod"]
         return int((d + skill_bonus) * stance_mod * self.stat_multiplier())
 
     def equip(self, item):
@@ -466,13 +474,13 @@ class Player:
         # Handle ammo stacking
         if item.get("ammo_type") == "arrow":
             self.ammo["arrow"] += item.get("stack", 12)
-            return f"You pick up {item['name']} (+{item.get('stack',12)} arrows)."
+            return f"You pick up {item['name']} (+{item.get('stack', 12)} arrows)."
         elif item.get("ammo_type") == "ball":
             self.ammo["ball"] += item.get("stack", 5)
-            return f"You pick up {item['name']} (+{item.get('stack',5)} balls)."
+            return f"You pick up {item['name']} (+{item.get('stack', 5)} balls)."
         elif item.get("type") == "money":
             self.money += item.get("money", 0)
-            return f"You pick up {item['name']} (+{item.get('money',0)} mon)."
+            return f"You pick up {item['name']} (+{item.get('money', 0)} mon)."
         self.inventory.append(item)
         return f"You pick up the {item['name']}."
 
@@ -500,9 +508,11 @@ class Player:
     def summary(self):
         """Return brief summary string."""
         cdef = CLASSES[self.cls]
-        return (f"{self.name} ({cdef['name']}) "
-                f"HP:{self.hp}/{self.max_hp} Ki:{self.stamina}/{self.max_stamina} "
-                f"Honor:{self.honor} Money:{self.money}mon")
+        return (
+            f"{self.name} ({cdef['name']}) "
+            f"HP:{self.hp}/{self.max_hp} Ki:{self.stamina}/{self.max_stamina} "
+            f"Honor:{self.honor} Money:{self.money}mon"
+        )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -510,17 +520,18 @@ class Player:
 # ─────────────────────────────────────────────────────────────
 class NPC:
     def __init__(self, npc_id, npc_type, col, row, rng=None):
-        self.id   = npc_id
+        self.id = npc_id
         self.type = npc_type
-        self.col  = col
-        self.row  = row
+        self.col = col
+        self.row = row
+        self.z = 0
         rng = rng or random
 
         defn = NPCS.get(npc_type, NPCS["farmer"])
 
-        self.name    = defn["name"]
-        self.char    = defn["char"]
-        self.pair    = defn["pair"]
+        self.name = defn["name"]
+        self.char = defn["char"]
+        self.pair = defn["pair"]
         self.faction = defn["faction"]
         self.is_animal = defn.get("is_animal", False)
         self.is_undead = defn.get("is_undead", False)
@@ -528,7 +539,7 @@ class NPC:
         # Randomize stats in range
         hp_lo, hp_hi = defn["hp"]
         self.max_hp = rng.randint(hp_lo, hp_hi)
-        self.hp     = self.max_hp
+        self.hp = self.max_hp
 
         atk_lo, atk_hi = defn["atk"]
         self.base_atk = rng.randint(atk_lo, atk_hi)
@@ -536,18 +547,18 @@ class NPC:
         def_lo, def_hi = defn["def"]
         self.base_def = rng.randint(def_lo, def_hi)
 
-        self.spd     = defn["spd"]  # actions per 10 turns
+        self.spd = defn["spd"]  # actions per 10 turns
         self.hostile = defn["hostile"]
-        self.morale  = defn["morale"]
-        self.honor   = defn["honor"]
-        self.skills  = dict(defn["skills"])
-        self.drops   = defn["drops"]
+        self.morale = defn["morale"]
+        self.honor = defn["honor"]
+        self.skills = dict(defn["skills"])
+        self.drops = defn["drops"]
         self.drop_ch = defn.get("drop_chance", 0.3)
         self.dialog_type = defn.get("dialog")
 
         # Equip starting weapons/armor
         self.weapon = None
-        self.armor  = 0
+        self.armor = 0
         for w_name in defn.get("weapons", []):
             if rng.random() < 0.7:
                 self.weapon = create_item(w_name, rng)
@@ -561,25 +572,39 @@ class NPC:
         self.conditions = {}
 
         # AI state
-        self.ai_state   = "idle"   # idle, patrol, chase, flee, guard
+        self.ai_state = "idle"  # idle, patrol, chase, flee, guard
         self.target_col = col
         self.target_row = row
-        self.home_col   = col
-        self.home_row   = row
-        self.alert      = False
+        self.home_col = col
+        self.home_row = row
+        self.alert = False
         self.seen_player = False
-        self.attitude   = 1 if not defn["hostile"] else -1
-        self.last_dir   = (0, 0)
+        self.attitude = 1 if not defn["hostile"] else -1
+        self.last_dir = (0, 0)
         self.move_timer = rng.randint(0, 3)
 
         # Unique name suffix
         if not self.is_animal and rng.random() < 0.3:
-            surnames = ["Tanaka","Yamamoto","Nakamura","Kobayashi","Ito",
-                        "Kato","Suzuki","Watanabe","Sasaki","Hayashi",
-                        "Yamada","Inoue","Matsumoto","Fujiwara","Okawauchi"]
+            surnames = [
+                "Tanaka",
+                "Yamamoto",
+                "Nakamura",
+                "Kobayashi",
+                "Ito",
+                "Kato",
+                "Suzuki",
+                "Watanabe",
+                "Sasaki",
+                "Hayashi",
+                "Yamada",
+                "Inoue",
+                "Matsumoto",
+                "Fujiwara",
+                "Okawauchi",
+            ]
             self.name = defn["name"] + " " + rng.choice(surnames)
 
-        self.alive  = True
+        self.alive = True
         self.talked = False
 
     @property
@@ -631,7 +656,7 @@ class NPC:
         self.move_timer = max(1, 10 - int(self.spd))
 
         actions = []
-        dist = math.sqrt((self.col - player_col)**2 + (self.row - player_row)**2)
+        dist = math.sqrt((self.col - player_col) ** 2 + (self.row - player_row) ** 2)
 
         # Detect player
         if dist <= 8 and not self.seen_player:
@@ -660,8 +685,16 @@ class NPC:
                 actions.append(("attack", self))
             else:
                 # Move toward player
-                dc = 0 if player_col == self.col else (1 if player_col > self.col else -1)
-                dr = 0 if player_row == self.row else (1 if player_row > self.row else -1)
+                dc = (
+                    0
+                    if player_col == self.col
+                    else (1 if player_col > self.col else -1)
+                )
+                dr = (
+                    0
+                    if player_row == self.row
+                    else (1 if player_row > self.row else -1)
+                )
                 nc, nr = self.col + dc, self.row + dr
                 if world.is_walkable(nc, nr):
                     world.move_npc(self, nc, nr)
@@ -718,21 +751,21 @@ class NPC:
     def get_debate_stance(self):
         """Get this NPC's debate topic and stance."""
         npc_debate_topics = {
-            "farmer":      ("rice_taxation",       "peasant"),
-            "elder":       ("rice_taxation",       "tradition"),
-            "samurai":     ("bushido",             "honor_above_all"),
-            "lord":        ("political_authority", "might_makes_right"),
-            "monk":        ("buddhism_authority",  "buddhism"),
-            "merchant":    ("trade_policy",        "free_trade"),
-            "ronin":       ("clan_loyalty",        "freedom"),
-            "bandit":      ("peasant_rights",      "rebel"),
-            "bandit_chief":("honor_vs_survival",   "survival"),
-            "pilgrim":     ("spiritual_practice",  "buddhism"),
-            "yamabushi":   ("spiritual_practice",  "shinto"),
-            "guard":       ("political_authority", "law_and_order"),
-            "captain":     ("military_strategy",   "order_above_all"),
-            "hunter":      ("honor_vs_survival",   "pragmatism"),
-            "innkeeper":   ("trade_policy",        "neutral"),
-            "blacksmith":  ("trade_policy",        "neutral"),
+            "farmer": ("rice_taxation", "peasant"),
+            "elder": ("rice_taxation", "tradition"),
+            "samurai": ("bushido", "honor_above_all"),
+            "lord": ("political_authority", "might_makes_right"),
+            "monk": ("buddhism_authority", "buddhism"),
+            "merchant": ("trade_policy", "free_trade"),
+            "ronin": ("clan_loyalty", "freedom"),
+            "bandit": ("peasant_rights", "rebel"),
+            "bandit_chief": ("honor_vs_survival", "survival"),
+            "pilgrim": ("spiritual_practice", "buddhism"),
+            "yamabushi": ("spiritual_practice", "shinto"),
+            "guard": ("political_authority", "law_and_order"),
+            "captain": ("military_strategy", "order_above_all"),
+            "hunter": ("honor_vs_survival", "pragmatism"),
+            "innkeeper": ("trade_policy", "neutral"),
+            "blacksmith": ("trade_policy", "neutral"),
         }
         return npc_debate_topics.get(self.type, ("clan_loyalty", "neutral"))

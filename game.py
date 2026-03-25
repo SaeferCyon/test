@@ -9,29 +9,38 @@ import math
 from data import *
 from world import World, geo_to_grid
 from entities import Player, NPC, create_item
-from mechanics import (CombatManager, DebateManager, forage, attempt_fish,
-                        attempt_hunt, attempt_sleep, get_world_temperature,
-                        TrapManager, CRAFT_RECIPES)
+from mechanics import (
+    CombatManager,
+    DebateManager,
+    forage,
+    attempt_fish,
+    attempt_hunt,
+    attempt_sleep,
+    get_world_temperature,
+    TrapManager,
+    CRAFT_RECIPES,
+)
 from renderer import Renderer
+
 
 # ─────────────────────────────────────────────────────────────
 # GAME STATE
 # ─────────────────────────────────────────────────────────────
 class GameState:
     def __init__(self):
-        self.turn        = 0
-        self.day         = 1
-        self.hour        = 6    # start at dawn
-        self.minute      = 0
-        self.season      = "Spring"
+        self.turn = 0
+        self.day = 1
+        self.hour = 6  # start at dawn
+        self.minute = 0
+        self.season = "Spring"
         self.season_turn = 0
-        self.weather     = "clear"
+        self.weather = "clear"
         self.weather_timer = 0
-        self.rng         = random.Random()
-        self.game_over   = False
+        self.rng = random.Random()
+        self.game_over = False
         self.death_cause = ""
-        self.paused      = False
-        self.sneak_mode  = False
+        self.paused = False
+        self.sneak_mode = False
 
     @property
     def is_night(self):
@@ -76,8 +85,8 @@ class GameState:
     def _change_weather(self):
         table = WEATHER_BY_SEASON.get(self.season, [("clear", 100)])
         total = sum(w for _, w in table)
-        roll  = self.rng.uniform(0, total)
-        cum   = 0
+        roll = self.rng.uniform(0, total)
+        cum = 0
         for weather, w in table:
             cum += w
             if roll <= cum:
@@ -96,57 +105,88 @@ class GameState:
 # REGION START POSITIONS
 # ─────────────────────────────────────────────────────────────
 REGION_STARTS = {
-    "kanto":  (35.68, 139.69),   # Edo
-    "kinki":  (35.01, 135.77),   # Kyoto
-    "tohoku": (38.27, 140.87),   # Sendai
-    "kyushu": (33.59, 130.41),   # Fukuoka
+    "kanto": (35.68, 139.69),  # Edo
+    "kinki": (35.01, 135.77),  # Kyoto
+    "tohoku": (38.27, 140.87),  # Sendai
+    "kyushu": (33.59, 130.41),  # Fukuoka
 }
 
 # ─────────────────────────────────────────────────────────────
 # KEY MAPPINGS
 # ─────────────────────────────────────────────────────────────
 MOVE_KEYS = {
-    ord('h'): (-1,  0), ord('j'): ( 0,  1), ord('k'): ( 0, -1), ord('l'): ( 1,  0),
-    ord('y'): (-1, -1), ord('u'): ( 1, -1), ord('b'): (-1,  1), ord('n'): ( 1,  1),
-    curses.KEY_LEFT:  (-1,  0), curses.KEY_DOWN:  ( 0,  1),
-    curses.KEY_UP:    ( 0, -1), curses.KEY_RIGHT: ( 1,  0),
-    ord('4'): (-1,  0), ord('2'): ( 0,  1), ord('8'): ( 0, -1), ord('6'): ( 1,  0),
-    ord('7'): (-1, -1), ord('9'): ( 1, -1), ord('1'): (-1,  1), ord('3'): ( 1,  1),
+    ord("h"): (-1, 0),
+    ord("j"): (0, 1),
+    ord("k"): (0, -1),
+    ord("l"): (1, 0),
+    ord("y"): (-1, -1),
+    ord("u"): (1, -1),
+    ord("b"): (-1, 1),
+    ord("n"): (1, 1),
+    curses.KEY_LEFT: (-1, 0),
+    curses.KEY_DOWN: (0, 1),
+    curses.KEY_UP: (0, -1),
+    curses.KEY_RIGHT: (1, 0),
+    ord("4"): (-1, 0),
+    ord("2"): (0, 1),
+    ord("8"): (0, -1),
+    ord("6"): (1, 0),
+    ord("7"): (-1, -1),
+    ord("9"): (1, -1),
+    ord("1"): (-1, 1),
+    ord("3"): (1, 1),
 }
 
 COMBAT_TECH_KEYS = {
-    ord('1'): "strike",    ord('2'): "feint",     ord('3'): "power",
-    ord('4'): "parry",     ord('5'): "dodge",     ord('6'): "riposte",
-    ord('7'): "throw",     ord('8'): "aimed_shot",
+    ord("1"): "strike",
+    ord("2"): "feint",
+    ord("3"): "power",
+    ord("4"): "parry",
+    ord("5"): "dodge",
+    ord("6"): "riposte",
+    ord("7"): "throw",
+    ord("8"): "aimed_shot",
 }
 
 DEBATE_ARG_KEYS = {
-    ord('1'): "logical",  ord('2'): "emotional", ord('3'): "evidence",
-    ord('4'): "authority",ord('5'): "rhetoric",  ord('6'): "intimidate",
-    ord('7'): "bribe",    ord('8'): "concede",
+    ord("1"): "logical",
+    ord("2"): "emotional",
+    ord("3"): "evidence",
+    ord("4"): "authority",
+    ord("5"): "rhetoric",
+    ord("6"): "intimidate",
+    ord("7"): "bribe",
+    ord("8"): "concede",
 }
+
 
 # ─────────────────────────────────────────────────────────────
 # MAIN GAME
 # ─────────────────────────────────────────────────────────────
 class Game:
     def __init__(self, stdscr):
-        self.stdscr  = stdscr
+        self.stdscr = stdscr
         self.renderer = Renderer(stdscr)
-        self.world   = World()
-        self.player  = Player()
-        self.state   = GameState()
-        self.combat  = CombatManager()
-        self.debate  = DebateManager()
-        self.traps   = TrapManager()
+        self.world = World()
+        self.player = Player()
+        self.state = GameState()
+        self.combat = CombatManager()
+        self.debate = DebateManager()
+        self.traps = TrapManager()
 
         # Dialog state
-        self.dialog_npc    = None
+        self.dialog_npc = None
         self.dialog_topics = {}
-        self.dialog_sel    = 0
+        self.dialog_sel = 0
 
         # UI mode
-        self.mode = "normal"  # normal, combat, debate, dialog, inventory, help, map, char
+        self.mode = (
+            "normal"  # normal, combat, debate, dialog, inventory, help, map, char
+        )
+
+        # Dual map system
+        self.map_mode = "travel"  # "travel" or "local"
+        self.game_world = None  # GameWorld instance (initialized in _init_world)
 
     # ─────────────────────────────────────────────────────
     # STARTUP
@@ -163,17 +203,17 @@ class Game:
         self.renderer.draw_splash()
         while True:
             k = self.renderer.get_key()
-            if k in (ord('n'), ord('N')):
+            if k in (ord("n"), ord("N")):
                 return
-            if k in (ord('q'), ord('Q')):
+            if k in (ord("q"), ord("Q")):
                 sys.exit(0)
 
     def _character_creation(self):
         """Run character creation screen."""
-        class_keys   = list(CLASSES.keys())
-        region_keys  = ["kanto","kinki","tohoku","kyushu"]
-        sel_class    = "ronin"
-        sel_region   = "kanto"
+        class_keys = list(CLASSES.keys())
+        region_keys = ["kanto", "kinki", "tohoku", "kyushu"]
+        sel_class = "ronin"
+        sel_region = "kanto"
         ci = class_keys.index(sel_class)
         ri = region_keys.index(sel_region)
 
@@ -181,10 +221,10 @@ class Game:
             self.renderer.draw_char_creation(sel_class, sel_region)
             k = self.renderer.get_key()
 
-            if k in (curses.KEY_RIGHT, ord('d')):
+            if k in (curses.KEY_RIGHT, ord("d")):
                 ci = (ci + 1) % len(class_keys)
                 sel_class = class_keys[ci]
-            elif k in (curses.KEY_LEFT, ord('a')):
+            elif k in (curses.KEY_LEFT, ord("a")):
                 ci = (ci - 1) % len(class_keys)
                 sel_class = class_keys[ci]
             elif k == curses.KEY_DOWN:
@@ -193,7 +233,7 @@ class Game:
             elif k == curses.KEY_UP:
                 ri = (ri - 1) % len(region_keys)
                 sel_region = region_keys[ri]
-            elif k in (ord('\n'), ord('\r'), curses.KEY_ENTER, 10, 13):
+            elif k in (ord("\n"), ord("\r"), curses.KEY_ENTER, 10, 13):
                 # Get name
                 name = self.renderer.prompt_string("Your name:")
                 self.player.name = name or "Nameless"
@@ -201,7 +241,7 @@ class Game:
                 self.state.rng = random.Random()
                 self._set_start_pos(sel_region)
                 return
-            elif k in (ord('q'), ord('Q')):
+            elif k in (ord("q"), ord("Q")):
                 sys.exit(0)
 
     def _set_start_pos(self, region):
@@ -209,9 +249,9 @@ class Game:
         col, row = geo_to_grid(lat, lon)
         # Find walkable tile near start
         for r in range(15):
-            for dc in range(-r, r+1):
-                for dr in range(-r, r+1):
-                    nc, nr = col+dc, row+dr
+            for dc in range(-r, r + 1):
+                for dr in range(-r, r + 1):
+                    nc, nr = col + dc, row + dr
                     if 0 <= nc < WORLD_W and 0 <= nr < WORLD_H:
                         t = self.world.tiles[nr][nc]
                         if TERRAIN[t.terrain]["walk"]:
@@ -224,19 +264,52 @@ class Game:
     def _init_world(self):
         """Generate the world tiles (before character creation)."""
         self.stdscr.clear()
-        self.renderer.safe_addstr(self.stdscr, self.renderer.term_h // 2 - 2,
-                                   self.renderer.term_w // 2 - 20,
-                                   "  Generating the land of Japan...  ",
-                                   curses.color_pair(6) | curses.A_BOLD)
+        self.renderer.safe_addstr(
+            self.stdscr,
+            self.renderer.term_h // 2 - 2,
+            self.renderer.term_w // 2 - 20,
+            "  Generating the land of Japan...  ",
+            curses.color_pair(6) | curses.A_BOLD,
+        )
         self.stdscr.refresh()
         self.world.generate(seed=42)
 
+        # Initialize dual map system
+        from region_map import GameWorld
+
+        self.game_world = GameWorld(seed=42)
+        self.game_world.region_map.world = self.world
+
+    def _enter_local_map(self):
+        """Transition from travel map to local map at player's position."""
+        if self.map_mode == "local":
+            return
+        lm = self.game_world.enter_local(self.player.col, self.player.row)
+        if lm:
+            self.map_mode = "local"
+            name = self.game_world.get_location_name(self.player.col, self.player.row)
+            if name:
+                self._msg(f"Entering {name}...", 6)
+            else:
+                self._msg("You look closer at the terrain around you.", 7)
+        else:
+            self._msg("Cannot enter this area.", 8)
+
+    def _exit_local_map(self):
+        """Transition from local map back to travel map."""
+        if self.map_mode == "travel":
+            return
+        self.game_world.exit_local()
+        self.map_mode = "travel"
+        self._msg("You step back to survey the wider land.", 7)
+
     def _post_creation_messages(self):
         """Queue intro messages after player name/class are known."""
-        self.world.compute_fov(self.player.col, self.player.row,
-                               self.player.fov_radius)
+        self.world.compute_fov(self.player.col, self.player.row, self.player.fov_radius)
         self._msg("The winds carry the smell of pine and distant iron.", 7)
-        self._msg(f"You are {self.player.name}, a {CLASSES[self.player.cls]['name']}.", 6)
+        self._msg(
+            f"You are {self.player.name}, a {CLASSES[self.player.cls]['name']}.", 6
+        )
         self._msg("Your story begins. [? for help]", 3)
 
     # ─────────────────────────────────────────────────────
@@ -246,21 +319,27 @@ class Game:
         """Main loop."""
         while not self.state.game_over:
             # Recompute FOV
-            self.world.compute_fov(self.player.col, self.player.row,
-                                   self.player.fov_radius)
+            self.world.compute_fov(
+                self.player.col, self.player.row, self.player.fov_radius
+            )
 
             # Draw
             if self.mode == "combat" and self.combat.active and self.combat.enemy:
                 self.renderer.draw(self.world, self.player, self.state)
-                self.renderer.draw_combat_overlay(self.player, self.combat.enemy, self.combat)
+                self.renderer.draw_combat_overlay(
+                    self.player, self.combat.enemy, self.combat
+                )
             elif self.mode == "debate" and self.debate.active and self.debate.target:
                 self.renderer.draw(self.world, self.player, self.state)
-                self.renderer.draw_debate_overlay(self.player, self.debate.target, self.debate)
+                self.renderer.draw_debate_overlay(
+                    self.player, self.debate.target, self.debate
+                )
             elif self.mode == "dialog" and self.dialog_npc:
                 self.renderer.draw(self.world, self.player, self.state)
                 greeting = self.dialog_npc.get_dialog()
-                self.renderer.draw_dialog(self.dialog_npc, greeting,
-                                          self.dialog_topics, self.dialog_sel)
+                self.renderer.draw_dialog(
+                    self.dialog_npc, greeting, self.dialog_topics, self.dialog_sel
+                )
             elif self.mode == "help":
                 self.renderer.draw(self.world, self.player, self.state)
                 self.renderer.draw_help()
@@ -288,12 +367,12 @@ class Game:
             elif self.mode == "help":
                 self.mode = "normal"
             elif self.mode == "map":
-                if k in (ord('m'), ord('M'), 27):
+                if k in (ord("m"), ord("M"), 27):
                     self.mode = "normal"
             elif self.mode == "inventory":
                 self._handle_inventory_input(k)
             elif self.mode == "char":
-                if k in (ord('@'), 27, ord('q')):
+                if k in (ord("@"), 27, ord("q")):
                     self.mode = "normal"
             else:
                 self._handle_normal_input(k)
@@ -308,9 +387,9 @@ class Game:
             self.renderer.draw_death_screen(self.player, self.state.death_cause)
             while True:
                 k = self.renderer.get_key()
-                if k in (ord('q'), ord('Q')):
+                if k in (ord("q"), ord("Q")):
                     break
-                if k in (ord('n'), ord('N')):
+                if k in (ord("n"), ord("N")):
                     # New game
                     self.__init__(self.stdscr)
                     self.run()
@@ -327,73 +406,73 @@ class Game:
             self._try_move(dc, dr)
 
         # Wait
-        elif k == ord('.'):
+        elif k == ord("."):
             self._pass_turn()
 
         # Pick up
-        elif k == ord(','):
+        elif k == ord(","):
             self._pick_up()
 
         # Inventory
-        elif k in (ord('i'),):
+        elif k in (ord("i"),):
             self.mode = "inventory"
 
         # Eat
-        elif k == ord('e'):
+        elif k == ord("e"):
             self._eat_menu()
 
         # Apply / use item
-        elif k == ord('a'):
+        elif k == ord("a"):
             self._use_item_menu()
 
         # Drop
-        elif k == ord('d'):
+        elif k == ord("d"):
             self._drop_menu()
 
         # Equip
-        elif k == ord('w'):
+        elif k == ord("w"):
             self._equip_menu()
 
         # Rest (10 turns)
-        elif k == ord('r'):
+        elif k == ord("r"):
             self._rest_short()
 
         # Sleep until dawn
-        elif k == ord('R'):
+        elif k == ord("R"):
             self._sleep_long()
 
         # Sneak toggle
-        elif k == ord('s'):
+        elif k == ord("s"):
             self.state.sneak_mode = not self.state.sneak_mode
             mode = "ON" if self.state.sneak_mode else "OFF"
             self._msg(f"Sneak mode: {mode}", 7)
 
         # Forage
-        elif k == ord('F'):
+        elif k == ord("F"):
             self._forage()
 
         # Hunt
-        elif k == ord('H'):
+        elif k == ord("H"):
             self._hunt()
 
         # Fish
-        elif k == ord('f'):
+        elif k == ord("f"):
             self._fish()
 
         # Set trap
-        elif k == ord('t'):
+        elif k == ord("t"):
             self._set_trap()
 
         # Talk
-        elif k in (ord('T'), ord('\n'), ord('\r'), 10, 13):
+        elif k in (ord("T"), ord("\n"), ord("\r"), 10, 13):
             self._talk_to_adjacent()
 
         # Debate
-        elif k == ord('D'):
+        elif k == ord("D"):
             self._debate_adjacent()
 
         # Examine terrain
-        elif k == ord('x'):
+        elif k == ord("x"):
             tile = self.world.get_tile(self.player.col, self.player.row)
             if tile:
                 td = TERRAIN[tile.terrain]
@@ -404,34 +483,40 @@ class Game:
                         self._msg(desc, 6)
 
         # Look at location
-        elif k == ord('l') and False:  # disable (l = move right)
+        elif k == ord("l") and False:  # disable (l = move right)
             pass
 
         # World map
-        elif k in (ord('M'), ord('m')):
+        elif k in (ord("M"), ord("m")):
             self.mode = "map"
 
         # Character sheet
-        elif k == ord('@'):
+        elif k == ord("@"):
             self.mode = "char"
 
         # Help
-        elif k == ord('?'):
+        elif k == ord("?"):
             self.mode = "help"
 
+        # Enter/exit local map (Z to zoom in, Escape to zoom out)
+        elif k == ord("Z") and self.map_mode == "travel":
+            self._enter_local_map()
+        elif k == 27 and self.map_mode == "local":
+            self._exit_local_map()
+
         # Quit
-        elif k in (ord('Q'),):
+        elif k in (ord("Q"),):
             self._confirm_quit()
 
         # Stance cycling
-        elif k == ord('\t'):
+        elif k == ord("\t"):
             stances = list(STANCES.keys())
             idx = stances.index(self.player.stance)
             self.player.stance = stances[(idx + 1) % len(stances)]
             self._msg(f"Combat stance: {self.player.stance.title()}", 7)
 
         # Look at adjacent NPC info
-        elif k == ord('v'):
+        elif k == ord("v"):
             self._describe_adjacent()
 
     def _handle_combat_input(self, k):
@@ -444,14 +529,18 @@ class Game:
         if tech:
             msgs = self.combat.player_attack(self.player, tech, self.world)
             for m in msgs:
-                pair = 5 if any(w in m.lower() for w in ["critical","hit","damage"]) else 1
+                pair = (
+                    5
+                    if any(w in m.lower() for w in ["critical", "hit", "damage"])
+                    else 1
+                )
                 if "miss" in m.lower():
                     pair = 8
                 self._msg(m, pair)
             if not self.combat.active:
                 self.mode = "normal"
 
-        elif k == ord('\t'):
+        elif k == ord("\t"):
             stances = list(STANCES.keys())
             idx = stances.index(self.player.stance)
             self.player.stance = stances[(idx + 1) % len(stances)]
@@ -466,7 +555,9 @@ class Game:
 
         # Check death
         if self.player.hp <= 0:
-            self._die(f"killed by {self.combat.enemy.name if self.combat.enemy else 'an enemy'}")
+            self._die(
+                f"killed by {self.combat.enemy.name if self.combat.enemy else 'an enemy'}"
+            )
 
     def _handle_debate_input(self, k):
         """Handle input during debate."""
@@ -499,20 +590,20 @@ class Game:
         topics = self.dialog_topics
         topic_keys = list(topics.keys())
 
-        if k == 27 or k == ord('q'):
+        if k == 27 or k == ord("q"):
             # Leave
             farewell = npc.get_farewell()
             self._msg(f'{npc.name}: "{farewell}"', 7)
             self.dialog_npc = None
             self.mode = "normal"
 
-        elif k == curses.KEY_DOWN or k == ord('j'):
+        elif k == curses.KEY_DOWN or k == ord("j"):
             self.dialog_sel = (self.dialog_sel + 1) % max(1, len(topic_keys))
 
-        elif k == curses.KEY_UP or k == ord('k'):
+        elif k == curses.KEY_UP or k == ord("k"):
             self.dialog_sel = (self.dialog_sel - 1) % max(1, len(topic_keys))
 
-        elif k in (ord('\n'), ord('\r'), 10, 13, ord(' ')):
+        elif k in (ord("\n"), ord("\r"), 10, 13, ord(" ")):
             if topic_keys and 0 <= self.dialog_sel < len(topic_keys):
                 topic = topic_keys[self.dialog_sel]
                 response = topics[topic]
@@ -522,8 +613,8 @@ class Game:
                     response = response.replace("{faction}", faction_name)
                     self._show_topic_response(npc, topic, response)
 
-        elif ord('1') <= k <= ord('9'):
-            idx = k - ord('1')
+        elif ord("1") <= k <= ord("9"):
+            idx = k - ord("1")
             if 0 <= idx < len(topic_keys):
                 topic = topic_keys[idx]
                 response = topics[topic]
@@ -532,23 +623,23 @@ class Game:
                     response = response.replace("{faction}", faction_name)
                 self._show_topic_response(npc, topic, response)
 
-        elif k in (ord('D'), ord('d')):
+        elif k in (ord("D"), ord("d")):
             # Start debate
             self.dialog_npc = None
             self.mode = "normal"
             self._start_debate(npc)
 
-        elif k in (ord('B'), ord('b')):
+        elif k in (ord("B"), ord("b")):
             # Trade/bribe
             self._trade_with(npc)
 
     def _handle_inventory_input(self, k):
         """Handle inventory screen input."""
         inv = self.player.inventory
-        if k == 27 or k == ord('i') or k == ord('q'):
+        if k == 27 or k == ord("i") or k == ord("q"):
             self.mode = "normal"
-        elif ord('1') <= k <= ord('9'):
-            idx = k - ord('1')
+        elif ord("1") <= k <= ord("9"):
+            idx = k - ord("1")
             if 0 <= idx < len(inv):
                 item = inv[idx]
                 # Show item submenu
@@ -569,7 +660,7 @@ class Game:
         options.append(("q", "Cancel"))
 
         # Draw submenu
-        lines = [f"", f"  {item['name']}", f"  {item.get('desc','')[:50]}", ""]
+        lines = [f"", f"  {item['name']}", f"  {item.get('desc', '')[:50]}", ""]
         for key, name in options:
             lines.append(f"  [{key}] {name}")
         lines.append("")
@@ -596,7 +687,7 @@ class Game:
                     msg = self.player.drop_item(item, self.world, None)
                     self._msg(msg, 7)
                 elif name == "Examine":
-                    self._msg(f"{item['name']}: {item.get('desc','')}", 7)
+                    self._msg(f"{item['name']}: {item.get('desc', '')}", 7)
                 break
 
     # ─────────────────────────────────────────────────────
@@ -668,8 +759,8 @@ class Game:
         # Feature announcement
         if tile.feature:
             f = tile.feature
-            if f.get("type") in ("city","temple","onsen"):
-                fname = f.get("name","?")
+            if f.get("type") in ("city", "temple", "onsen"):
+                fname = f.get("name", "?")
                 self._msg(f"You arrive at {fname}.", 6)
 
         # Onsen healing
@@ -703,8 +794,10 @@ class Game:
             s_msgs = self.player.tick_survival(
                 self.state.world_temp,
                 self.world.get_tile(self.player.col, self.player.row).terrain
-                if self.world.get_tile(self.player.col, self.player.row) else T_PLAINS,
-                self.state.weather, self.state.season
+                if self.world.get_tile(self.player.col, self.player.row)
+                else T_PLAINS,
+                self.state.weather,
+                self.state.season,
             )
             for m, p in s_msgs:
                 self._msg(m, p)
@@ -727,14 +820,19 @@ class Game:
 
             # Dawn/dusk messages
             if self.state.is_dawn():
-                self._msg(f"Dawn breaks. Day {self.state.day}. Season: {self.state.season}.", 3)
+                self._msg(
+                    f"Dawn breaks. Day {self.state.day}. Season: {self.state.season}.",
+                    3,
+                )
             if self.state.is_dusk():
                 self._msg("Dusk falls. The shadows deepen.", 8)
 
             # Weather change announcement
             if self.state.weather_timer == 39:  # just changed
                 we = WEATHER_EFFECTS.get(self.state.weather, {})
-                self._msg(f"Weather: {self.state.weather.title()}. {we.get('desc','')}", 7)
+                self._msg(
+                    f"Weather: {self.state.weather.title()}. {we.get('desc', '')}", 7
+                )
 
         # Player death check
         if self.player.hp <= 0:
@@ -778,13 +876,13 @@ class Game:
             for i, iid in enumerate(tile.items[:9]):
                 item = self.world.items.get(iid)
                 if item:
-                    lines.append(f"  [{i+1}] {item['name']}")
+                    lines.append(f"  [{i + 1}] {item['name']}")
             lines.append("  [Esc] Cancel")
             self.renderer._draw_modal(lines, title="PICK UP")
             self.stdscr.refresh()
             k = self.renderer.get_key()
-            if ord('1') <= k <= ord('9'):
-                idx = k - ord('1')
+            if ord("1") <= k <= ord("9"):
+                idx = k - ord("1")
                 if 0 <= idx < len(tile.items):
                     iid = tile.items[idx]
                     msg = self.player.pick_up(iid, self.world)
@@ -793,20 +891,23 @@ class Game:
 
     def _eat_menu(self):
         """Quick eat/drink menu."""
-        edibles = [(i, item) for i, item in enumerate(self.player.inventory)
-                   if item.get("type") in ("food","drink")]
+        edibles = [
+            (i, item)
+            for i, item in enumerate(self.player.inventory)
+            if item.get("type") in ("food", "drink")
+        ]
         if not edibles:
             self._msg("You have nothing to eat or drink.", 8)
             return
         lines = ["", "  Eat or drink which?"]
         for i, (_, item) in enumerate(edibles[:8]):
-            lines.append(f"  [{i+1}] {item['name']}")
+            lines.append(f"  [{i + 1}] {item['name']}")
         lines.append("  [Esc] Cancel")
         self.renderer._draw_modal(lines, title="EAT/DRINK")
         self.stdscr.refresh()
         k = self.renderer.get_key()
-        if ord('1') <= k <= ord('9'):
-            idx = k - ord('1')
+        if ord("1") <= k <= ord("9"):
+            idx = k - ord("1")
             if 0 <= idx < len(edibles):
                 _, item = edibles[idx]
                 msg, ok = self.player.eat(item)
@@ -817,20 +918,23 @@ class Game:
 
     def _use_item_menu(self):
         """Use/apply item menu."""
-        usable = [(i, item) for i, item in enumerate(self.player.inventory)
-                  if item.get("type") in ("medicine","tool","misc","scroll")]
+        usable = [
+            (i, item)
+            for i, item in enumerate(self.player.inventory)
+            if item.get("type") in ("medicine", "tool", "misc", "scroll")
+        ]
         if not usable:
             self._msg("Nothing applicable to use.", 8)
             return
         lines = ["", "  Use which item?"]
         for i, (_, item) in enumerate(usable[:8]):
-            lines.append(f"  [{i+1}] {item['name']} — {item.get('desc','')[:35]}")
+            lines.append(f"  [{i + 1}] {item['name']} — {item.get('desc', '')[:35]}")
         lines.append("  [Esc] Cancel")
         self.renderer._draw_modal(lines, title="USE ITEM")
         self.stdscr.refresh()
         k = self.renderer.get_key()
-        if ord('1') <= k <= ord('9'):
-            idx = k - ord('1')
+        if ord("1") <= k <= ord("9"):
+            idx = k - ord("1")
             if 0 <= idx < len(usable):
                 _, item = usable[idx]
                 self._use_item(item)
@@ -849,7 +953,10 @@ class Game:
                 self._start_fire(item)
             elif ttype == "light":
                 self.player.light_bonus = item.get("fov_bonus", 3)
-                self._msg(f"You light the {item['name']}. Visibility +{item.get('fov_bonus',3)}.", 3)
+                self._msg(
+                    f"You light the {item['name']}. Visibility +{item.get('fov_bonus', 3)}.",
+                    3,
+                )
             elif ttype == "fish":
                 self._fish()
             elif ttype == "trap":
@@ -860,13 +967,14 @@ class Game:
                 lat, lon = None, None
                 try:
                     from world import grid_to_geo
+
                     lat, lon = grid_to_geo(self.player.col, self.player.row)
                 except:
                     pass
                 # Mark nearby tiles as seen
                 r = 25
-                for dr in range(-r, r+1):
-                    for dc in range(-r, r+1):
+                for dr in range(-r, r + 1):
+                    for dc in range(-r, r + 1):
                         nc = self.player.col + dc
                         nr = self.player.row + dr
                         t = self.world.get_tile(nc, nr)
@@ -881,7 +989,9 @@ class Game:
         elif item.get("type") == "misc":
             if item.get("morale"):
                 self.player.morale = min(100, self.player.morale + item["morale"])
-                self._msg(f"You handle the {item['name']}. Morale +{item['morale']}.", 6)
+                self._msg(
+                    f"You handle the {item['name']}. Morale +{item['morale']}.", 6
+                )
 
     def _start_fire(self, flint_item):
         terrain = self.world.get_tile(self.player.col, self.player.row).terrain
@@ -889,7 +999,10 @@ class Game:
         if not has_wood:
             self._msg("You need firewood to start a fire.", 8)
             return
-        if terrain in (T_RIVER, T_SWAMP, T_BEACH) and self.state.weather in ("rain","storm"):
+        if terrain in (T_RIVER, T_SWAMP, T_BEACH) and self.state.weather in (
+            "rain",
+            "storm",
+        ):
             self._msg("Too wet to start a fire here.", 5)
             return
         # Remove wood from inventory
@@ -909,13 +1022,13 @@ class Game:
             return
         lines = ["", "  Drop which item?"]
         for i, item in enumerate(self.player.inventory[:9]):
-            lines.append(f"  [{i+1}] {item['name']}")
+            lines.append(f"  [{i + 1}] {item['name']}")
         lines.append("  [Esc] Cancel")
         self.renderer._draw_modal(lines, title="DROP")
         self.stdscr.refresh()
         k = self.renderer.get_key()
-        if ord('1') <= k <= ord('9'):
-            idx = k - ord('1')
+        if ord("1") <= k <= ord("9"):
+            idx = k - ord("1")
             if 0 <= idx < len(self.player.inventory):
                 item = self.player.inventory[idx]
                 msg = self.player.drop_item(item, self.world, None)
@@ -924,21 +1037,24 @@ class Game:
 
     def _equip_menu(self):
         """Equip weapon/armor menu."""
-        equippable = [(i, item) for i, item in enumerate(self.player.inventory)
-                      if item.get("type") in ("weapon","armor")]
+        equippable = [
+            (i, item)
+            for i, item in enumerate(self.player.inventory)
+            if item.get("type") in ("weapon", "armor")
+        ]
         if not equippable:
             self._msg("Nothing to equip.", 8)
             return
         lines = ["", "  Equip which item?"]
         for i, (_, item) in enumerate(equippable[:9]):
-            slot = item.get("slot","weapon") if item["type"]=="armor" else "weapon"
-            lines.append(f"  [{i+1}] {item['name']} [{slot}]")
+            slot = item.get("slot", "weapon") if item["type"] == "armor" else "weapon"
+            lines.append(f"  [{i + 1}] {item['name']} [{slot}]")
         lines.append("  [Esc] Cancel")
         self.renderer._draw_modal(lines, title="EQUIP")
         self.stdscr.refresh()
         k = self.renderer.get_key()
-        if ord('1') <= k <= ord('9'):
-            idx = k - ord('1')
+        if ord("1") <= k <= ord("9"):
+            idx = k - ord("1")
             if 0 <= idx < len(equippable):
                 _, item = equippable[idx]
                 msg = self.player.equip(item)
@@ -947,9 +1063,16 @@ class Game:
     def _rest_short(self):
         """Rest 10 turns."""
         terrain = self.world.get_tile(self.player.col, self.player.row).terrain
-        if any(npc for npc in self.world.npcs.values()
-               if npc.alive and npc.hostile and
-               math.sqrt((npc.col-self.player.col)**2 + (npc.row-self.player.row)**2) < 5):
+        if any(
+            npc
+            for npc in self.world.npcs.values()
+            if npc.alive
+            and npc.hostile
+            and math.sqrt(
+                (npc.col - self.player.col) ** 2 + (npc.row - self.player.row) ** 2
+            )
+            < 5
+        ):
             self._msg("Enemies are too close to rest!", 5)
             return
         self._process_turn(10)
@@ -969,8 +1092,9 @@ class Game:
             hours = 6  # sleep a standard night
 
         hours = max(2, min(10, hours))
-        msgs, interrupted = attempt_sleep(self.player, terrain,
-                                          self.state.weather, hours, self.state.rng)
+        msgs, interrupted = attempt_sleep(
+            self.player, terrain, self.state.weather, hours, self.state.rng
+        )
         for m in msgs:
             self._msg(m, 7)
 
@@ -989,8 +1113,9 @@ class Game:
             return
         self._msg("You search the area for food and resources...", 8)
         self._process_turn(5)
-        success, item_name, msg = forage(self.player, tile.terrain,
-                                          self.state.season, self.state.rng)
+        success, item_name, msg = forage(
+            self.player, tile.terrain, self.state.season, self.state.rng
+        )
         self._msg(msg, 3 if success else 8)
         if success and item_name:
             item = create_item(item_name)
@@ -1019,7 +1144,9 @@ class Game:
             return
         self._msg("You track game through the area...", 8)
         self._process_turn(12)
-        success, item_name, msg = attempt_hunt(self.player, tile.terrain, self.state.rng)
+        success, item_name, msg = attempt_hunt(
+            self.player, tile.terrain, self.state.rng
+        )
         self._msg(msg, 3 if success else 8)
         if success and item_name:
             item = create_item(item_name)
@@ -1031,7 +1158,9 @@ class Game:
         tile = self.world.get_tile(self.player.col, self.player.row)
         if not tile:
             return
-        success, msg = self.traps.place_trap(self.player.col, self.player.row, self.player)
+        success, msg = self.traps.place_trap(
+            self.player.col, self.player.row, self.player
+        )
         self._msg(msg, 3 if success else 8)
         if success:
             self._process_turn(3)
@@ -1064,14 +1193,18 @@ class Game:
             return
 
         greeting_lines = npc.get_dialog()
-        greeting = random.choice(greeting_lines) if isinstance(greeting_lines, list) else str(greeting_lines)
+        greeting = (
+            random.choice(greeting_lines)
+            if isinstance(greeting_lines, list)
+            else str(greeting_lines)
+        )
         self._msg(f'{npc.name}: "{greeting}"', 7)
 
         npc.talked = True
-        self.dialog_npc    = npc
+        self.dialog_npc = npc
         self.dialog_topics = npc.get_dialog_topics()
-        self.dialog_sel    = 0
-        self.mode          = "dialog"
+        self.dialog_sel = 0
+        self.mode = "dialog"
 
     def _show_topic_response(self, npc, topic, response):
         """Show NPC's response to a topic."""
@@ -1123,8 +1256,10 @@ class Game:
                     npc = self.world.npcs.get(tile.npc_id)
                     if npc:
                         npc_def = NPCS.get(npc.type, {})
-                        self._msg(f"{npc.name}: {npc_def.get('desc','')}", 7)
-                        self._msg(f"  HP:{npc.hp}/{npc.max_hp} Hostile:{npc.hostile}", 8)
+                        self._msg(f"{npc.name}: {npc_def.get('desc', '')}", 7)
+                        self._msg(
+                            f"  HP:{npc.hp}/{npc.max_hp} Hostile:{npc.hostile}", 8
+                        )
 
     # ─────────────────────────────────────────────────────
     # COMBAT
@@ -1154,12 +1289,17 @@ class Game:
 
     def _confirm_quit(self):
         """Confirm quit."""
-        lines = ["", "  Quit the game?", "  Your progress will be lost.", "",
-                 "  [Y]es  [N]o"]
+        lines = [
+            "",
+            "  Quit the game?",
+            "  Your progress will be lost.",
+            "",
+            "  [Y]es  [N]o",
+        ]
         self.renderer._draw_modal(lines, title="QUIT?")
         self.stdscr.refresh()
         k = self.renderer.get_key()
-        if k in (ord('y'), ord('Y')):
+        if k in (ord("y"), ord("Y")):
             sys.exit(0)
 
 
@@ -1172,6 +1312,7 @@ def main(stdscr):
         game.run()
     except KeyboardInterrupt:
         pass
+
 
 if __name__ == "__main__":
     curses.wrapper(main)
