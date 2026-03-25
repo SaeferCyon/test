@@ -779,6 +779,25 @@ class Game:
             if self.state.turn % 3 == 0:
                 self._msg("The hot spring's mineral waters soothe your body.", 9)
 
+        # Check for random encounter on travel
+        if self.encounter_manager:
+            enc = self.encounter_manager.check_encounter(
+                nc,
+                nr,
+                tile.terrain,
+                self.state.season,
+                self.state.hour,
+                self.state.rng,
+            )
+            if enc:
+                self._msg(enc.description, 5 if enc.is_hostile else 7)
+                if self.event_bus:
+                    from topic_data import EVT_CRIME_WITNESSED
+
+                    self.event_bus.emit(
+                        EVT_CRIME_WITNESSED, encounter=enc, col=nc, row=nr
+                    )
+
         # Process turn
         self._process_turn(move_cost)
 
@@ -843,9 +862,32 @@ class Game:
                     f"Weather: {self.state.weather.title()}. {we.get('desc', '')}", 7
                 )
 
+        # Society simulation ticks (daily)
+        if self.state.hour == 0 and self.state.minute < 6:
+            self._tick_society()
+
         # Player death check
         if self.player.hp <= 0:
             self._die("succumbing to wounds and hardship")
+
+    def _tick_society(self):
+        """Run daily society simulation ticks."""
+        rng = self.state.rng
+        # Aging (check once per day)
+        if self.life_simulation:
+            age_msgs = self.life_simulation.tick_aging("player", TURNS_PER_DAY * 365)
+            for m in age_msgs:
+                self._msg(m, 6)
+            # Disease progression
+            disease_msgs = self.life_simulation.tick_diseases(rng)
+            for m in disease_msgs:
+                self._msg(m, 5)
+        # Memory decay
+        if self.memory_manager:
+            self.memory_manager.tick_decay(0.005)
+        # Encounter manager — advance travelers
+        if self.encounter_manager:
+            self.encounter_manager.tick_travelers(self.world)
 
     def _tick_npcs(self):
         """Run AI for all NPCs."""
@@ -1192,7 +1234,7 @@ class Game:
         self._msg("There's no one to talk to nearby.", 8)
 
     def _talk(self, npc):
-        """Start dialog with NPC."""
+        """Start dialog with NPC using Morrowind-style topic system."""
         if npc.is_animal or npc.is_undead:
             self._msg(f"The {npc.name} does not speak.", 8)
             return
@@ -1201,26 +1243,124 @@ class Game:
             self._start_combat(npc)
             return
 
-        greeting_lines = npc.get_dialog()
-        greeting = (
-            random.choice(greeting_lines)
-            if isinstance(greeting_lines, list)
-            else str(greeting_lines)
-        )
-        self._msg(f'{npc.name}: "{greeting}"', 7)
+        # Get greeting via conversation system if available
+        if self.conversation_system:
+            text, _ = self.conversation_system.get_response(
+                "greetings",
+                npc.id,
+                npc.type,
+                getattr(npc, "traits", []),
+                self.relationship_manager.get_score("player", npc.id)
+                if self.relationship_manager
+                else 0,
+                self.state.rng,
+            )
+            self._msg(f'{npc.name}: "{text}"', 7)
+        else:
+            greeting_lines = npc.get_dialog()
+            greeting = (
+                random.choice(greeting_lines)
+                if isinstance(greeting_lines, list)
+                else str(greeting_lines)
+            )
+            self._msg(f'{npc.name}: "{greeting}"', 7)
+
+        # Create memory of meeting
+        if self.memory_manager:
+            from memories import create_memory
+            from topic_data import EVT_CONVERSATION_END
+
+            mem = create_memory(
+                EVT_CONVERSATION_END, "player", npc.id, f"Spoke with {npc.name}"
+            )
+            self.memory_manager.add_memory(npc.id, mem)
+
+        # Update relationship (talking builds familiarity)
+        if self.relationship_manager:
+            self.relationship_manager.modify_score("player", npc.id, 1)
 
         npc.talked = True
         self.dialog_npc = npc
-        self.dialog_topics = npc.get_dialog_topics()
+
+        # Use new topic system if available, else fall back to old
+        if self.conversation_system:
+            rel_score = (
+                self.relationship_manager.get_score("player", npc.id)
+                if self.relationship_manager
+                else 0
+            )
+            self.dialog_topics = {}
+            available = self.conversation_system.get_available_topics(
+                "player",
+                npc.type,
+                self.player.skills,
+                rel_score,
+            )
+            for topic_key in available:
+                from topic_data import TOPICS
+
+                t = TOPICS.get(topic_key, {})
+                self.dialog_topics[t.get("name", topic_key)] = topic_key
+        else:
+            self.dialog_topics = npc.get_dialog_topics()
+
         self.dialog_sel = 0
         self.mode = "dialog"
 
     def _show_topic_response(self, npc, topic, response):
         """Show NPC's response to a topic."""
-        self.renderer.draw_topic_response(npc, topic, response)
-        self.renderer.get_key()
-        # Gain rhetoric XP for asking questions
-        self.player.gain_skill_xp("rhetoric", 3)
+        # If response is a topic_key from new system, generate response
+        if (
+            self.conversation_system
+            and isinstance(response, str)
+            and response in (self.conversation_system.get_known_topics("player"))
+        ):
+            topic_key = response
+            rel_score = (
+                self.relationship_manager.get_score("player", npc.id)
+                if self.relationship_manager
+                else 0
+            )
+            text, knowledge = self.conversation_system.get_response(
+                topic_key,
+                npc.id,
+                npc.type,
+                getattr(npc, "traits", []),
+                rel_score,
+                self.state.rng,
+            )
+            self._msg(f'{npc.name}: "{text}"', 7)
+
+            # Check for topic discovery
+            npc_knowledge = self.conversation_system.get_npc_knowledge(
+                topic_key,
+                npc.type,
+            )
+            new_topics = self.conversation_system.check_topic_unlock(
+                "player",
+                topic_key,
+                npc_knowledge,
+                self.state.rng,
+            )
+            for nt in new_topics:
+                from topic_data import TOPICS
+
+                t_name = TOPICS.get(nt, {}).get("name", nt)
+                self._msg(f"New topic discovered: {t_name}", 3)
+                if self.event_bus:
+                    from topic_data import EVT_TOPIC_DISCOVERED
+
+                    self.event_bus.emit(
+                        EVT_TOPIC_DISCOVERED, topic=nt, player_id="player"
+                    )
+
+            # Gain rhetoric XP
+            self.player.gain_skill_xp("rhetoric", 3)
+        else:
+            # Old system fallback
+            self.renderer.draw_topic_response(npc, topic, response)
+            self.renderer.get_key()
+            self.player.gain_skill_xp("rhetoric", 3)
 
     def _debate_adjacent(self):
         """Find adjacent NPC and start debate."""
@@ -1280,14 +1420,56 @@ class Game:
             self._msg(m, 5)
         self.mode = "combat"
 
+        # Create memory of combat
+        if self.memory_manager:
+            from memories import create_memory
+            from topic_data import EVT_COMBAT_HIT
+
+            mem = create_memory(
+                EVT_COMBAT_HIT, "player", npc.id, f"Fought with {npc.name}"
+            )
+            self.memory_manager.add_memory(npc.id, mem)
+            # Witnesses nearby remember too
+            self.memory_manager.spread_gossip(
+                npc.id,
+                [
+                    n.id
+                    for n in self.world.npcs.values()
+                    if n.alive
+                    and abs(n.col - self.player.col) <= 5
+                    and abs(n.row - self.player.row) <= 5
+                    and n.id != npc.id
+                ],
+                self.state.rng,
+            )
+
+        # Emit event
+        if self.event_bus:
+            from topic_data import EVT_COMBAT_HIT
+
+            self.event_bus.emit(EVT_COMBAT_HIT, attacker="player", defender=npc.id)
+
     # ─────────────────────────────────────────────────────
     # DEATH
     # ─────────────────────────────────────────────────────
     def _die(self, cause):
+        # Check for heir (dynasty continuation)
+        if self.life_simulation:
+            heir_id = self.life_simulation.get_heir("player")
+            if heir_id:
+                self._msg(f"Your story ends... but your legacy continues.", 6)
+                self._msg(f"You will be remembered.", 6)
+                # For now, mark game over — full heir playthrough is future work
         self.state.game_over = True
         self.state.death_cause = cause
         self.combat.active = False
         self.debate.active = False
+
+        # Emit death event
+        if self.event_bus:
+            from topic_data import EVT_PLAYER_DEATH
+
+            self.event_bus.emit(EVT_PLAYER_DEATH, cause=cause)
 
     # ─────────────────────────────────────────────────────
     # UTILITY
