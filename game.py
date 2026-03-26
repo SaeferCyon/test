@@ -184,9 +184,14 @@ class Game:
             "normal"  # normal, combat, debate, dialog, inventory, help, map, char
         )
 
-        # Dual map system
-        self.map_mode = "travel"  # "travel" or "local"
-        self.game_world = None  # GameWorld instance (initialized in _init_world)
+        # Society simulation systems (initialized after world gen)
+        self.event_bus = None
+        self.trait_manager = None
+        self.memory_manager = None
+        self.relationship_manager = None
+        self.conversation_system = None
+        self.life_simulation = None
+        self.encounter_manager = None
 
     # ─────────────────────────────────────────────────────
     # STARTUP
@@ -196,6 +201,7 @@ class Game:
         self._show_splash()
         self._init_world()
         self._character_creation()
+        self._init_society_for_player()
         self._post_creation_messages()
         self._game_loop()
 
@@ -274,179 +280,43 @@ class Game:
         self.stdscr.refresh()
         self.world.generate(seed=42)
 
-        # Initialize dual map system
-        from region_map import GameWorld
+        # Initialize society simulation systems
+        from event_bus import EventBus
+        from traits import TraitManager
+        from memories import MemoryManager
+        from relationships import RelationshipManager
+        from conversations import ConversationSystem
+        from life_sim import LifeSimulation
+        from encounters import EncounterManager
 
-        self.game_world = GameWorld(seed=42)
-        self.game_world.region_map.world = self.world
-
-        # Initialize clan simulation
-        from clan_sim import ClanSimulation
-
-        self._clan_sim = ClanSimulation()
-
-    def _draw_local_mode(self):
-        """Draw the local map view."""
-        gw = self.game_world
-        self.renderer.draw_local(
-            gw.current_local,
-            gw.local_player_x,
-            gw.local_player_y,
-            gw.local_player_z,
-            self.state,
+        self.event_bus = EventBus()
+        self.trait_manager = TraitManager()
+        self.memory_manager = MemoryManager()
+        self.relationship_manager = RelationshipManager(
+            trait_manager=self.trait_manager,
+            memory_manager=self.memory_manager,
         )
+        self.conversation_system = ConversationSystem(
+            relationship_manager=self.relationship_manager,
+        )
+        self.life_simulation = LifeSimulation(
+            trait_manager=self.trait_manager,
+            relationship_manager=self.relationship_manager,
+        )
+        self.encounter_manager = EncounterManager()
 
-    def _handle_local_input(self, k):
-        """Handle input when on the local map."""
-        from mechanics import check_fall, attempt_vertical_move
-
-        # Movement (same keys as travel)
-        if k in MOVE_KEYS:
-            dc, dr = MOVE_KEYS[k]
-            self._try_local_move(dc, dr)
-        # Go up (<)
-        elif k == ord("<"):
-            ok, msgs = attempt_vertical_move(
-                self.player,
-                "up",
-                self.game_world.current_local,
-                self.game_world.local_player_x,
-                self.game_world.local_player_y,
-            )
-            for m in msgs:
-                self._msg(m, 3 if ok else 8)
-            if ok:
-                self.game_world.local_player_z = self.player.z
-                self._process_turn(2)
-        # Go down (>)
-        elif k == ord(">"):
-            ok, msgs = attempt_vertical_move(
-                self.player,
-                "down",
-                self.game_world.current_local,
-                self.game_world.local_player_x,
-                self.game_world.local_player_y,
-            )
-            for m in msgs:
-                self._msg(m, 3 if ok else 8)
-            if ok:
-                self.game_world.local_player_z = self.player.z
-                self._process_turn(2)
-        # Exit local map (Escape)
-        elif k == 27:
-            self._exit_local_map()
-        # Wait
-        elif k == ord("."):
-            self._process_turn(1)
-        # Examine
-        elif k == ord("x"):
-            lm = self.game_world.current_local
-            gw = self.game_world
-            t = lm.get_tile(gw.local_player_x, gw.local_player_y, gw.local_player_z)
-            if t and t.terrain in LOCAL_TERRAIN:
-                td = LOCAL_TERRAIN[t.terrain]
-                self._msg(f"{td['name']}: {td['desc']}", 7)
-        # Inventory, character sheet, help, map, stance — same as travel
-        elif k in (ord("i"),):
-            self.mode = "inventory"
-        elif k == ord("@"):
-            self.mode = "char"
-        elif k == ord("?"):
-            self.mode = "help"
-        elif k in (ord("M"), ord("m")):
-            self._exit_local_map()
-            self.mode = "map"
-        elif k in (ord("Q"),):
-            self._confirm_quit()
-        elif k == ord("\t"):
-            stances = list(STANCES.keys())
-            idx = stances.index(self.player.stance)
-            self.player.stance = stances[(idx + 1) % len(stances)]
-            self._msg(f"Combat stance: {self.player.stance.title()}", 7)
-        # Eat, forage, rest — same as travel
-        elif k == ord("e"):
-            self._eat_menu()
-        elif k == ord("r"):
-            self._rest_short()
-        elif k == ord("F"):
-            self._forage()
-
-    def _try_local_move(self, dc, dr):
-        """Try to move on the local map."""
-        from mechanics import check_fall
-
-        gw = self.game_world
-        lm = gw.current_local
-        nx = gw.local_player_x + dc
-        ny = gw.local_player_y + dr
-        nz = gw.local_player_z
-
-        # Edge detection — move to adjacent area tile
-        if nx < 0:
-            if gw.move_to_adjacent_area("west"):
-                self._msg("You move to a new area.", 7)
-            return
-        elif nx >= LOCAL_W:
-            if gw.move_to_adjacent_area("east"):
-                self._msg("You move to a new area.", 7)
-            return
-        if ny < 0:
-            if gw.move_to_adjacent_area("north"):
-                self._msg("You move to a new area.", 7)
-            return
-        elif ny >= LOCAL_H:
-            if gw.move_to_adjacent_area("south"):
-                self._msg("You move to a new area.", 7)
-            return
-
-        # Walkability check
-        if not lm.is_walkable(nx, ny, nz):
-            t = lm.get_tile(nx, ny, nz)
-            if t and t.terrain in LOCAL_TERRAIN:
-                td = LOCAL_TERRAIN[t.terrain]
-                self._msg(f"Blocked by {td['name'].lower()}.", 8)
-            else:
-                self._msg("You can't go there.", 8)
-            return
-
-        # Move
-        gw.local_player_x = nx
-        gw.local_player_y = ny
-        self.player.distance_moved += 1
-
-        # Check for falling
-        fall_msgs = check_fall(self.player, lm, nx, ny)
-        for m in fall_msgs:
-            self._msg(m, 5)
-        if fall_msgs:
-            gw.local_player_z = self.player.z
-
-        # Move cost
-        cost = lm.get_move_cost(nx, ny, nz)
-        self._process_turn(cost)
-
-    def _enter_local_map(self):
-        """Transition from travel map to local map at player's position."""
-        if self.map_mode == "local":
-            return
-        lm = self.game_world.enter_local(self.player.col, self.player.row)
-        if lm:
-            self.map_mode = "local"
-            name = self.game_world.get_location_name(self.player.col, self.player.row)
-            if name:
-                self._msg(f"Entering {name}...", 6)
-            else:
-                self._msg("You look closer at the terrain around you.", 7)
-        else:
-            self._msg("Cannot enter this area.", 8)
-
-    def _exit_local_map(self):
-        """Transition from local map back to travel map."""
-        if self.map_mode == "travel":
-            return
-        self.game_world.exit_local()
-        self.map_mode = "travel"
-        self._msg("You step back to survey the wider land.", 7)
+    def _init_society_for_player(self):
+        """Initialize society systems for the player after character creation."""
+        # Give player starting topics
+        self.conversation_system.init_starting_topics("player")
+        # Register player in life simulation
+        self.life_simulation.register_character(
+            "player",
+            self.player.name,
+            self.player.age,
+            self.player.gender,
+            list(self.player.traits),
+        )
 
     def _post_creation_messages(self):
         """Queue intro messages after player name/class are known."""
@@ -463,18 +333,10 @@ class Game:
     def _game_loop(self):
         """Main loop."""
         while not self.state.game_over:
-            # Recompute FOV (travel or local)
-            if self.map_mode == "local" and self.game_world.current_local:
-                self.game_world.current_local.compute_fov(
-                    self.game_world.local_player_x,
-                    self.game_world.local_player_y,
-                    self.game_world.local_player_z,
-                    self.player.fov_radius,
-                )
-            else:
-                self.world.compute_fov(
-                    self.player.col, self.player.row, self.player.fov_radius
-                )
+            # Recompute FOV
+            self.world.compute_fov(
+                self.player.col, self.player.row, self.player.fov_radius
+            )
 
             # Draw
             if self.map_mode == "local" and self.game_world.current_local:
@@ -937,6 +799,25 @@ class Game:
             if self.state.turn % 3 == 0:
                 self._msg("The hot spring's mineral waters soothe your body.", 9)
 
+        # Check for random encounter on travel
+        if self.encounter_manager:
+            enc = self.encounter_manager.check_encounter(
+                nc,
+                nr,
+                tile.terrain,
+                self.state.season,
+                self.state.hour,
+                self.state.rng,
+            )
+            if enc:
+                self._msg(enc.description, 5 if enc.is_hostile else 7)
+                if self.event_bus:
+                    from topic_data import EVT_CRIME_WITNESSED
+
+                    self.event_bus.emit(
+                        EVT_CRIME_WITNESSED, encounter=enc, col=nc, row=nr
+                    )
+
         # Process turn
         self._process_turn(move_cost)
 
@@ -1001,9 +882,32 @@ class Game:
                     f"Weather: {self.state.weather.title()}. {we.get('desc', '')}", 7
                 )
 
+        # Society simulation ticks (daily)
+        if self.state.hour == 0 and self.state.minute < 6:
+            self._tick_society()
+
         # Player death check
         if self.player.hp <= 0:
             self._die("succumbing to wounds and hardship")
+
+    def _tick_society(self):
+        """Run daily society simulation ticks."""
+        rng = self.state.rng
+        # Aging (check once per day)
+        if self.life_simulation:
+            age_msgs = self.life_simulation.tick_aging("player", TURNS_PER_DAY * 365)
+            for m in age_msgs:
+                self._msg(m, 6)
+            # Disease progression
+            disease_msgs = self.life_simulation.tick_diseases(rng)
+            for m in disease_msgs:
+                self._msg(m, 5)
+        # Memory decay
+        if self.memory_manager:
+            self.memory_manager.tick_decay(0.005)
+        # Encounter manager — advance travelers
+        if self.encounter_manager:
+            self.encounter_manager.tick_travelers(self.world)
 
     def _tick_npcs(self):
         """Run AI for all NPCs."""
@@ -1350,7 +1254,7 @@ class Game:
         self._msg("There's no one to talk to nearby.", 8)
 
     def _talk(self, npc):
-        """Start dialog with NPC."""
+        """Start dialog with NPC using Morrowind-style topic system."""
         if npc.is_animal or npc.is_undead:
             self._msg(f"The {npc.name} does not speak.", 8)
             return
@@ -1359,26 +1263,124 @@ class Game:
             self._start_combat(npc)
             return
 
-        greeting_lines = npc.get_dialog()
-        greeting = (
-            random.choice(greeting_lines)
-            if isinstance(greeting_lines, list)
-            else str(greeting_lines)
-        )
-        self._msg(f'{npc.name}: "{greeting}"', 7)
+        # Get greeting via conversation system if available
+        if self.conversation_system:
+            text, _ = self.conversation_system.get_response(
+                "greetings",
+                npc.id,
+                npc.type,
+                getattr(npc, "traits", []),
+                self.relationship_manager.get_score("player", npc.id)
+                if self.relationship_manager
+                else 0,
+                self.state.rng,
+            )
+            self._msg(f'{npc.name}: "{text}"', 7)
+        else:
+            greeting_lines = npc.get_dialog()
+            greeting = (
+                random.choice(greeting_lines)
+                if isinstance(greeting_lines, list)
+                else str(greeting_lines)
+            )
+            self._msg(f'{npc.name}: "{greeting}"', 7)
+
+        # Create memory of meeting
+        if self.memory_manager:
+            from memories import create_memory
+            from topic_data import EVT_CONVERSATION_END
+
+            mem = create_memory(
+                EVT_CONVERSATION_END, "player", npc.id, f"Spoke with {npc.name}"
+            )
+            self.memory_manager.add_memory(npc.id, mem)
+
+        # Update relationship (talking builds familiarity)
+        if self.relationship_manager:
+            self.relationship_manager.modify_score("player", npc.id, 1)
 
         npc.talked = True
         self.dialog_npc = npc
-        self.dialog_topics = npc.get_dialog_topics()
+
+        # Use new topic system if available, else fall back to old
+        if self.conversation_system:
+            rel_score = (
+                self.relationship_manager.get_score("player", npc.id)
+                if self.relationship_manager
+                else 0
+            )
+            self.dialog_topics = {}
+            available = self.conversation_system.get_available_topics(
+                "player",
+                npc.type,
+                self.player.skills,
+                rel_score,
+            )
+            for topic_key in available:
+                from topic_data import TOPICS
+
+                t = TOPICS.get(topic_key, {})
+                self.dialog_topics[t.get("name", topic_key)] = topic_key
+        else:
+            self.dialog_topics = npc.get_dialog_topics()
+
         self.dialog_sel = 0
         self.mode = "dialog"
 
     def _show_topic_response(self, npc, topic, response):
         """Show NPC's response to a topic."""
-        self.renderer.draw_topic_response(npc, topic, response)
-        self.renderer.get_key()
-        # Gain rhetoric XP for asking questions
-        self.player.gain_skill_xp("rhetoric", 3)
+        # If response is a topic_key from new system, generate response
+        if (
+            self.conversation_system
+            and isinstance(response, str)
+            and response in (self.conversation_system.get_known_topics("player"))
+        ):
+            topic_key = response
+            rel_score = (
+                self.relationship_manager.get_score("player", npc.id)
+                if self.relationship_manager
+                else 0
+            )
+            text, knowledge = self.conversation_system.get_response(
+                topic_key,
+                npc.id,
+                npc.type,
+                getattr(npc, "traits", []),
+                rel_score,
+                self.state.rng,
+            )
+            self._msg(f'{npc.name}: "{text}"', 7)
+
+            # Check for topic discovery
+            npc_knowledge = self.conversation_system.get_npc_knowledge(
+                topic_key,
+                npc.type,
+            )
+            new_topics = self.conversation_system.check_topic_unlock(
+                "player",
+                topic_key,
+                npc_knowledge,
+                self.state.rng,
+            )
+            for nt in new_topics:
+                from topic_data import TOPICS
+
+                t_name = TOPICS.get(nt, {}).get("name", nt)
+                self._msg(f"New topic discovered: {t_name}", 3)
+                if self.event_bus:
+                    from topic_data import EVT_TOPIC_DISCOVERED
+
+                    self.event_bus.emit(
+                        EVT_TOPIC_DISCOVERED, topic=nt, player_id="player"
+                    )
+
+            # Gain rhetoric XP
+            self.player.gain_skill_xp("rhetoric", 3)
+        else:
+            # Old system fallback
+            self.renderer.draw_topic_response(npc, topic, response)
+            self.renderer.get_key()
+            self.player.gain_skill_xp("rhetoric", 3)
 
     def _debate_adjacent(self):
         """Find adjacent NPC and start debate."""
@@ -1438,14 +1440,56 @@ class Game:
             self._msg(m, 5)
         self.mode = "combat"
 
+        # Create memory of combat
+        if self.memory_manager:
+            from memories import create_memory
+            from topic_data import EVT_COMBAT_HIT
+
+            mem = create_memory(
+                EVT_COMBAT_HIT, "player", npc.id, f"Fought with {npc.name}"
+            )
+            self.memory_manager.add_memory(npc.id, mem)
+            # Witnesses nearby remember too
+            self.memory_manager.spread_gossip(
+                npc.id,
+                [
+                    n.id
+                    for n in self.world.npcs.values()
+                    if n.alive
+                    and abs(n.col - self.player.col) <= 5
+                    and abs(n.row - self.player.row) <= 5
+                    and n.id != npc.id
+                ],
+                self.state.rng,
+            )
+
+        # Emit event
+        if self.event_bus:
+            from topic_data import EVT_COMBAT_HIT
+
+            self.event_bus.emit(EVT_COMBAT_HIT, attacker="player", defender=npc.id)
+
     # ─────────────────────────────────────────────────────
     # DEATH
     # ─────────────────────────────────────────────────────
     def _die(self, cause):
+        # Check for heir (dynasty continuation)
+        if self.life_simulation:
+            heir_id = self.life_simulation.get_heir("player")
+            if heir_id:
+                self._msg(f"Your story ends... but your legacy continues.", 6)
+                self._msg(f"You will be remembered.", 6)
+                # For now, mark game over — full heir playthrough is future work
         self.state.game_over = True
         self.state.death_cause = cause
         self.combat.active = False
         self.debate.active = False
+
+        # Emit death event
+        if self.event_bus:
+            from topic_data import EVT_PLAYER_DEATH
+
+            self.event_bus.emit(EVT_PLAYER_DEATH, cause=cause)
 
     # ─────────────────────────────────────────────────────
     # UTILITY

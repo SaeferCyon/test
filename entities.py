@@ -5,6 +5,8 @@ entities.py - Player, NPC, and Item entities for 縁起 ENGI
 import random
 import math
 from data import *
+from social_data import NPC_DEFAULT_RANK, RANK_FARMER, RANK_RONIN, PLAYER_CLASS_RANK
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -100,6 +102,19 @@ class Player:
         # Light source bonus (from lantern/torch)
         self.light_bonus = 0
 
+        # Society simulation attributes
+        self.traits = []  # list of trait keys
+        self.body_map = None  # BodyMap instance (lazy init)
+        self.age = 20  # starting age in years
+        self.gender = "male"  # "male" or "female"
+        self.social_rank = RANK_RONIN  # from social_data
+        self.known_topics = set()  # topic keys discovered
+        self.family_id = None  # char_id in life_sim family tree
+        self.spouse_id = None  # NPC id of spouse
+        self.children_ids = []  # NPC ids of children
+        self.parent_ids = []  # NPC ids of parents
+        self.discovered_traits = {}  # npc_id -> set of trait keys we've discovered about them
+
     def setup_class(self, cls_name, rng=None):
         """Initialize player from class definition."""
         rng = rng or random
@@ -112,6 +127,7 @@ class Player:
         self.money = cdef["start_money"]
         self.skills = dict(cdef["skills"])
         self.skill_xp = {k: 0 for k in SKILLS}
+        self.social_rank = PLAYER_CLASS_RANK.get(cls_name, RANK_RONIN)
 
         # Starting equipment
         if cdef["start_weapon"]:
@@ -524,7 +540,6 @@ class NPC:
         self.type = npc_type
         self.col = col
         self.row = row
-        self.z = 0
         rng = rng or random
 
         defn = NPCS.get(npc_type, NPCS["farmer"])
@@ -606,6 +621,20 @@ class NPC:
 
         self.alive = True
         self.talked = False
+
+        # Society simulation attributes
+        self.traits = []  # list of trait keys
+        self.body_map = None  # BodyMap instance (lazy init)
+        self.age = rng.randint(18, 55)
+        self.gender = rng.choice(["male", "female"])
+        self.social_rank = NPC_DEFAULT_RANK.get(npc_type, RANK_FARMER)
+        self.known_topics = set()  # topics this NPC knows about
+        self.family_id = None
+        self.spouse_id = None
+        self.children_ids = []
+        self.parent_ids = []
+        self.travel_destination = None  # for dynamic encounters - where NPC is heading
+        self.home_location = None  # where NPC considers home
 
     @property
     def is_hostile(self):
