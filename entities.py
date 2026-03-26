@@ -8,6 +8,7 @@ from data import *
 from social_data import NPC_DEFAULT_RANK, RANK_FARMER, RANK_RONIN, PLAYER_CLASS_RANK
 
 
+
 # ─────────────────────────────────────────────────────────────
 # ITEM INSTANCE
 # ─────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ class Player:
     def __init__(self):
         self.col = 0
         self.row = 0
+        self.z = 0
         self.name = "Nameless"
         self.cls = "ronin"
 

@@ -339,7 +339,9 @@ class Game:
             )
 
             # Draw
-            if self.mode == "combat" and self.combat.active and self.combat.enemy:
+            if self.map_mode == "local" and self.game_world.current_local:
+                self._draw_local_mode()
+            elif self.mode == "combat" and self.combat.active and self.combat.enemy:
                 self.renderer.draw(self.world, self.player, self.state)
                 self.renderer.draw_combat_overlay(
                     self.player, self.combat.enemy, self.combat
@@ -389,8 +391,20 @@ class Game:
             elif self.mode == "char":
                 if k in (ord("@"), 27, ord("q")):
                     self.mode = "normal"
+            elif self.map_mode == "local":
+                self._handle_local_input(k)
             else:
                 self._handle_normal_input(k)
+
+            # Clan simulation tick (once per game day)
+            if (
+                self.game_world
+                and hasattr(self, "_clan_sim")
+                and self._clan_sim
+                and self.state.hour == 0
+                and self.state.minute < 6
+            ):
+                self._clan_sim.tick(self.state.rng)
 
             # Death check
             if self.player.hp <= 0:
@@ -512,6 +526,12 @@ class Game:
         # Help
         elif k == ord("?"):
             self.mode = "help"
+
+        # Enter/exit local map (Z to zoom in, Escape to zoom out)
+        elif k == ord("Z") and self.map_mode == "travel":
+            self._enter_local_map()
+        elif k == 27 and self.map_mode == "local":
+            self._exit_local_map()
 
         # Quit
         elif k in (ord("Q"),):

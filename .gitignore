@@ -1,0 +1,7 @@
+.claude
+.gitmodules
+.claude-plugin/
+.golangci.yml
+.mcp.json
+Makefile
+__pycache__/
