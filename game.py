@@ -21,6 +21,7 @@ from mechanics import (
     CRAFT_RECIPES,
 )
 from renderer import Renderer
+from region_map import GameWorld
 
 
 # ─────────────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ class GameState:
         self.death_cause = ""
         self.paused = False
         self.sneak_mode = False
+        self.location_name = ""
 
     @property
     def is_night(self):
@@ -184,7 +186,7 @@ class Game:
             "normal"  # normal, combat, debate, dialog, inventory, help, map, char
         )
 
-        # Map mode (travel only on this branch — dual-map is on feature-1774377928)
+        # Map mode: "travel" (region map) or "local" (1m-scale local map)
         self.map_mode = "travel"
         self.game_world = None
 
@@ -284,6 +286,10 @@ class Game:
         self.stdscr.refresh()
         self.world.generate(seed=42)
 
+        # Initialize GameWorld (3-tier map system) using the already-generated world
+        self.game_world = GameWorld(seed=42)
+        self.game_world.region_map.world = self.world
+
         # Initialize society simulation systems
         from event_bus import EventBus
         from traits import TraitManager
@@ -337,64 +343,85 @@ class Game:
     def _game_loop(self):
         """Main loop."""
         while not self.state.game_over:
-            # Recompute FOV
-            self.world.compute_fov(
-                self.player.col, self.player.row, self.player.fov_radius
-            )
-
-            # Draw
-            if self.mode == "combat" and self.combat.active and self.combat.enemy:
-                self.renderer.draw(self.world, self.player, self.state)
-                self.renderer.draw_combat_overlay(
-                    self.player, self.combat.enemy, self.combat
+            if self.map_mode == "local" and self.game_world.is_in_local():
+                # --- LOCAL MAP MODE ---
+                gw = self.game_world
+                gw.current_local.compute_fov(
+                    gw.local_player_x,
+                    gw.local_player_y,
+                    gw.local_player_z,
+                    self.player.fov_radius,
                 )
-            elif self.mode == "debate" and self.debate.active and self.debate.target:
-                self.renderer.draw(self.world, self.player, self.state)
-                self.renderer.draw_debate_overlay(
-                    self.player, self.debate.target, self.debate
+                self.renderer.draw_local(
+                    gw.current_local,
+                    gw.local_player_x,
+                    gw.local_player_y,
+                    gw.local_player_z,
+                    self.state,
                 )
-            elif self.mode == "dialog" and self.dialog_npc:
-                self.renderer.draw(self.world, self.player, self.state)
-                greeting = self.dialog_npc.get_dialog()
-                self.renderer.draw_dialog(
-                    self.dialog_npc, greeting, self.dialog_topics, self.dialog_sel
-                )
-            elif self.mode == "help":
-                self.renderer.draw(self.world, self.player, self.state)
-                self.renderer.draw_help()
-            elif self.mode == "map":
-                self.renderer.draw(self.world, self.player, self.state)
-                self.renderer.draw_world_map(self.world, self.player)
-            elif self.mode == "inventory":
-                self.renderer.draw(self.world, self.player, self.state)
-                self.renderer.draw_inventory(self.player)
-            elif self.mode == "char":
-                self.renderer.draw(self.world, self.player, self.state)
-                self.renderer.draw_character_sheet(self.player)
+                k = self.renderer.get_key()
+                self._handle_local_input(k)
             else:
-                self.renderer.draw(self.world, self.player, self.state)
+                # --- TRAVEL MAP MODE ---
+                self.world.compute_fov(
+                    self.player.col, self.player.row, self.player.fov_radius
+                )
 
-            # Handle input
-            k = self.renderer.get_key()
+                # Draw
+                if self.mode == "combat" and self.combat.active and self.combat.enemy:
+                    self.renderer.draw(self.world, self.player, self.state)
+                    self.renderer.draw_combat_overlay(
+                        self.player, self.combat.enemy, self.combat
+                    )
+                elif (
+                    self.mode == "debate" and self.debate.active and self.debate.target
+                ):
+                    self.renderer.draw(self.world, self.player, self.state)
+                    self.renderer.draw_debate_overlay(
+                        self.player, self.debate.target, self.debate
+                    )
+                elif self.mode == "dialog" and self.dialog_npc:
+                    self.renderer.draw(self.world, self.player, self.state)
+                    greeting = self.dialog_npc.get_dialog()
+                    self.renderer.draw_dialog(
+                        self.dialog_npc, greeting, self.dialog_topics, self.dialog_sel
+                    )
+                elif self.mode == "help":
+                    self.renderer.draw(self.world, self.player, self.state)
+                    self.renderer.draw_help()
+                elif self.mode == "map":
+                    self.renderer.draw(self.world, self.player, self.state)
+                    self.renderer.draw_world_map(self.world, self.player)
+                elif self.mode == "inventory":
+                    self.renderer.draw(self.world, self.player, self.state)
+                    self.renderer.draw_inventory(self.player)
+                elif self.mode == "char":
+                    self.renderer.draw(self.world, self.player, self.state)
+                    self.renderer.draw_character_sheet(self.player)
+                else:
+                    self.renderer.draw(self.world, self.player, self.state)
 
-            if self.mode == "combat":
-                self._handle_combat_input(k)
-            elif self.mode == "debate":
-                self._handle_debate_input(k)
-            elif self.mode == "dialog":
-                self._handle_dialog_input(k)
-            elif self.mode == "help":
-                self.mode = "normal"
-            elif self.mode == "map":
-                if k in (ord("m"), ord("M"), 27):
+                # Handle input
+                k = self.renderer.get_key()
+
+                if self.mode == "combat":
+                    self._handle_combat_input(k)
+                elif self.mode == "debate":
+                    self._handle_debate_input(k)
+                elif self.mode == "dialog":
+                    self._handle_dialog_input(k)
+                elif self.mode == "help":
                     self.mode = "normal"
-            elif self.mode == "inventory":
-                self._handle_inventory_input(k)
-            elif self.mode == "char":
-                if k in (ord("@"), 27, ord("q")):
-                    self.mode = "normal"
-            else:
-                self._handle_normal_input(k)
+                elif self.mode == "map":
+                    if k in (ord("m"), ord("M"), 27):
+                        self.mode = "normal"
+                elif self.mode == "inventory":
+                    self._handle_inventory_input(k)
+                elif self.mode == "char":
+                    if k in (ord("@"), 27, ord("q")):
+                        self.mode = "normal"
+                else:
+                    self._handle_normal_input(k)
 
             # Death check
             if self.player.hp <= 0:
@@ -501,9 +528,9 @@ class Game:
                     if desc:
                         self._msg(desc, 6)
 
-        # Look at location
-        elif k == ord("l") and False:  # disable (l = move right)
-            pass
+        # Enter local map
+        elif k == ord("Z"):
+            self._enter_local_map()
 
         # World map
         elif k in (ord("M"), ord("m")):
@@ -531,6 +558,150 @@ class Game:
         # Look at adjacent NPC info
         elif k == ord("v"):
             self._describe_adjacent()
+
+    # ─────────────────────────────────────────────────────
+    # LOCAL MAP
+    # ─────────────────────────────────────────────────────
+    def _enter_local_map(self):
+        """Transition from travel map to local map at player's current position."""
+        tile = self.world.get_tile(self.player.col, self.player.row)
+        if not tile:
+            return
+        td = TERRAIN[tile.terrain]
+        if not td["walk"]:
+            self._msg("You cannot explore this terrain up close.", 8)
+            return
+
+        local_map = self.game_world.enter_local(self.player.col, self.player.row)
+        if local_map is None:
+            self._msg("Nothing to explore here.", 8)
+            return
+
+        # Start at ground level and find a walkable spawn point near center
+        gw = self.game_world
+        gw.local_player_z = SURFACE_Z
+        self._find_walkable_spawn(local_map, gw)
+
+        loc_name = gw.get_location_name(self.player.col, self.player.row)
+        self.state.location_name = loc_name or td["name"]
+        self.map_mode = "local"
+        self._msg(f"You examine the area closely. [{self.state.location_name}]", 6)
+
+    def _find_walkable_spawn(self, local_map, gw):
+        """Find a walkable tile near the center of the local map for spawning."""
+        cx, cy, z = gw.local_player_x, gw.local_player_y, gw.local_player_z
+        if local_map.is_walkable(cx, cy, z):
+            return
+        # Spiral outward from center to find the nearest walkable tile
+        for r in range(1, max(LOCAL_W, LOCAL_H) // 2):
+            for dx in range(-r, r + 1):
+                for dy in range(-r, r + 1):
+                    if abs(dx) != r and abs(dy) != r:
+                        continue  # only check the ring perimeter
+                    nx, ny = cx + dx, cy + dy
+                    if local_map.is_walkable(nx, ny, z):
+                        gw.local_player_x = nx
+                        gw.local_player_y = ny
+                        return
+
+    def _exit_local_map(self):
+        """Return from local map to travel map."""
+        self.game_world.exit_local()
+        self.map_mode = "travel"
+        self.state.location_name = ""
+        self._msg("You return to the road.", 7)
+
+    def _handle_local_input(self, k):
+        """Handle input while on the local map."""
+        if k in MOVE_KEYS:
+            dx, dy = MOVE_KEYS[k]
+            self._try_local_move(dx, dy)
+        elif k == ord("."):
+            self._pass_turn()
+        elif k == ord(">"):
+            self._local_z_move(1)
+        elif k == ord("<"):
+            self._local_z_move(-1)
+        elif k in (27, ord("Z")):  # Esc or Z to exit
+            self._exit_local_map()
+        elif k == ord("x"):
+            self._examine_local_tile()
+        elif k == ord("?"):
+            self._msg("Local map: hjkl=move  <>=Z-level  x=examine  Z/Esc=exit", 7)
+
+    def _try_local_move(self, dx, dy):
+        """Move player on the local map."""
+        gw = self.game_world
+        nx = gw.local_player_x + dx
+        ny = gw.local_player_y + dy
+
+        # Boundary crossing — move to adjacent area tile
+        if nx < 0:
+            if gw.move_to_adjacent_area("west"):
+                self._msg("You move to a new area.", 7)
+            return
+        elif nx >= LOCAL_W:
+            if gw.move_to_adjacent_area("east"):
+                self._msg("You move to a new area.", 7)
+            return
+        if ny < 0:
+            if gw.move_to_adjacent_area("north"):
+                self._msg("You move to a new area.", 7)
+            return
+        elif ny >= LOCAL_H:
+            if gw.move_to_adjacent_area("south"):
+                self._msg("You move to a new area.", 7)
+            return
+
+        if not gw.current_local.is_walkable(nx, ny, gw.local_player_z):
+            tile = gw.current_local.get_tile(nx, ny, gw.local_player_z)
+            if tile:
+                tdef = LOCAL_TERRAIN.get(tile.terrain, {})
+                self._msg(f"Blocked by {tdef.get('name', 'something')}.", 8)
+            return
+
+        gw.local_player_x = nx
+        gw.local_player_y = ny
+        self._process_turn(1)
+
+    def _local_z_move(self, dz):
+        """Move up or down a Z-level (stairs/ladders)."""
+        gw = self.game_world
+        from z_level import can_ascend, can_descend
+
+        col = gw.current_local.get_column(gw.local_player_x, gw.local_player_y)
+        if col is None:
+            self._msg("Nothing here.", 8)
+            return
+        new_z = gw.local_player_z + dz
+        if dz > 0 and not can_ascend(col, gw.local_player_z):
+            self._msg("No way up here.", 8)
+            return
+        if dz < 0 and not can_descend(col, gw.local_player_z):
+            self._msg("No way down here.", 8)
+            return
+        gw.local_player_z = new_z
+        z_label = (
+            "underground"
+            if new_z < SURFACE_Z
+            else "above ground"
+            if new_z > SURFACE_Z
+            else "ground level"
+        )
+        self._msg(f"You move to Z:{new_z} ({z_label}).", 7)
+        self._process_turn(1)
+
+    def _examine_local_tile(self):
+        """Examine the terrain at the player's feet on the local map."""
+        gw = self.game_world
+        tile = gw.current_local.get_tile(
+            gw.local_player_x, gw.local_player_y, gw.local_player_z
+        )
+        if tile:
+            tdef = LOCAL_TERRAIN.get(tile.terrain, {})
+            self._msg(f"{tdef.get('name', 'Unknown')}", 7)
+        else:
+            self._msg("Empty space.", 8)
 
     def _handle_combat_input(self, k):
         """Handle input during combat."""
